@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Monitoring ISM-ISPS Armada</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Chosen Palette: Minimalist Maritime (Slate-50 background, Blue-600 primary, Emerald-500 success, Rose-500 danger, White cards) -->
+    
+    <!-- Application Structure Plan: 
+    Aplikasi ini menggunakan struktur "Executive Dashboard" dengan navigasi tab. 
+    Alasannya: Laporan ISM/ISPS memiliki metrik yang padat (kepatuhan, drill, isu teknis) untuk banyak kapal. Struktur dashboard memungkinkan pengguna melihat gambaran besar (Overview) terlebih dahulu, lalu menggali detail (Drill-down ke kartu kapal), dan melakukan analisis berdampingan (Comparison Matrix). 
+    - Tab 1: Ringkasan Eksekutif (KPI utama dan status singkat tiap kapal).
+    - Tab 2: Analisis Visual (Grafik interaktif untuk membandingkan metrik secara langsung).
+    - Tab 3: Matriks Komparasi (Tabel detail fungsional dari keempat kapal).
+    -->
+
+    <!-- Visualization & Content Choices: 
+    1. KPI Cards -> Goal: Inform -> Method: Styled HTML Divs with Unicode Icons -> Justification: Cepat memberikan ringkasan status armada.
+    2. Status Kapal (Cards) -> Goal: Organize & Inform -> Method: HTML Grid with Clickable Modals -> Justification: Memudahkan pemilihan spesifik kapal tanpa membebani halaman utama.
+    3. Perbandingan Drill (Chart) -> Goal: Compare -> Method: Bar Chart (Chart.js) -> Justification: Sangat efektif membandingkan kuantitas (jumlah drill) secara visual antar 4 kapal.
+    4. Distribusi Isu Teknis (Chart) -> Goal: Proportions/Relationships -> Method: Doughnut Chart (Chart.js) -> Justification: Menunjukkan proporsi beban maintenance di seluruh armada.
+    5. Matriks Operasional -> Goal: Compare -> Method: HTML Table with JS Sorting -> Justification: Format terbaik untuk melihat detail tekstual (nama master, lokasi, dll) berdampingan.
+    -->
+
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <style>
+        /* Essential Chart Container Styling per Requirements */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px; /* Base height */
+            max-height: 350px;
+            overflow: hidden;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        @media (min-width: 1024px) {
+            .chart-container {
+                max-width: 100%; /* Expands in larger grid columns */
+            }
+        }
+
+        /* Custom Scrollbar for a cleaner look */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .tab-btn.active {
+            border-bottom: 2px solid #2563EB;
+            color: #2563EB;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800 antialiased selection:bg-blue-200">
+
+    <!-- Top Navigation -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-2xl mr-2">⚓</span>
+                    <span class="font-bold text-lg text-slate-900 tracking-tight">ISM-ISPS <span class="text-blue-600">Monitor</span></span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">Periode: Januari 2026</span>
+                </div>
+            </div>
+            <div class="flex space-x-8 overflow-x-auto" id="nav-tabs">
+                <button onclick="switchTab('overview')" class="tab-btn active pb-3 text-sm font-medium text-slate-500 hover:text-slate-700 transition">Ringkasan Eksekutif</button>
+                <button onclick="switchTab('analytics')" class="tab-btn pb-3 text-sm font-medium text-slate-500 hover:text-slate-700 transition">Analisis Visual</button>
+                <button onclick="switchTab('comparison')" class="tab-btn pb-3 text-sm font-medium text-slate-500 hover:text-slate-700 transition">Matriks Komparasi</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- SECTION 1: OVERVIEW -->
+        <section id="sec-overview" class="block animate-fade-in">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 mb-2">Ringkasan Eksekutif Armada</h2>
+                <p class="text-slate-600 max-w-3xl leading-relaxed">
+                    Bagian ini menyajikan gambaran tingkat tinggi dari kepatuhan operasional kapal berdasarkan laporan ISM dan ISPS Code Januari 2026. Tujuannya adalah memberikan pemahaman instan mengenai status kesiapan, tingkat kepatuhan, dan isu keamanan/keselamatan terkini dari keempat armada LCT PT. Pelayaran Lestari Abadi Serasi.
+                </p>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center">
+                    <div class="p-3 bg-blue-50 text-blue-600 rounded-lg text-xl mr-4">🚢</div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-semibold uppercase">Total Kapal</p>
+                        <p class="text-2xl font-bold text-slate-800" id="kpi-total">4 Unit</p>
+                    </div>
+                </div>
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center">
+                    <div class="p-3 bg-emerald-50 text-emerald-600 rounded-lg text-xl mr-4">✅</div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-semibold uppercase">Rata-rata Kepatuhan</p>
+                        <p class="text-2xl font-bold text-slate-800" id="kpi-compliance">95.2%</p>
+                    </div>
+                </div>
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center">
+                    <div class="p-3 bg-indigo-50 text-indigo-600 rounded-lg text-xl mr-4">🛡️</div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-semibold uppercase">Total Security Drill</p>
+                        <p class="text-2xl font-bold text-slate-800" id="kpi-drills">15 Sesi</p>
+                    </div>
+                </div>
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center">
+                    <div class="p-3 bg-amber-50 text-amber-600 rounded-lg text-xl mr-4">⚠️</div>
+                    <div>
+                        <p class="text-xs text-slate-500 font-semibold uppercase">Temuan / Kerusakan</p>
+                        <p class="text-2xl font-bold text-slate-800" id="kpi-issues">9 Kasus</p>
+                    </div>
+                </div>
+            </div>
+
+            <h3 class="text-lg font-bold text-slate-800 mb-4">Status Individu Kapal <span class="text-sm font-normal text-slate-500">(Klik untuk detail)</span></h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6" id="ship-cards-container">
+                <!-- Cards injected via JS -->
+            </div>
+        </section>
+
+        <!-- SECTION 2: ANALYTICS -->
+        <section id="sec-analytics" class="hidden animate-fade-in">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 mb-2">Analisis Visual Kinerja</h2>
+                <p class="text-slate-600 max-w-3xl leading-relaxed">
+                    Bagian analisis ini mengubah data tabular dari laporan menjadi visualisasi interaktif. Grafik di bawah ini mendemonstrasikan perbandingan langsung frekuensi latihan keamanan (ISPS Code) dan distribusi temuan teknis (ISM Code) antar kapal. Visualisasi ini krusial untuk mengidentifikasi kapal mana yang paling proaktif atau yang membutuhkan intervensi pemeliharaan segera.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Chart 1: Drills -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="font-bold text-slate-800 mb-1">Perbandingan Frekuensi Security Drills</h3>
+                    <p class="text-xs text-slate-500 mb-4">Total pelaksanaan drill berdasarkan laporan Januari 2026</p>
+                    <div class="flex-grow flex items-center justify-center">
+                        <div class="chart-container">
+                            <canvas id="drillChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Issues -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="font-bold text-slate-800 mb-1">Distribusi Temuan & Kerusakan Teknis</h3>
+                    <p class="text-xs text-slate-500 mb-4">Proporsi masalah operasional antar kapal bulan ini</p>
+                    <div class="flex-grow flex items-center justify-center">
+                        <div class="chart-container">
+                            <canvas id="issueChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-6 bg-blue-50 border border-blue-100 p-4 rounded-xl text-sm text-blue-800">
+                <span class="font-bold">💡 Analisis Insight:</span> LCT Dewa Samudera Abadi menunjukkan tingkat proaktifitas tertinggi dalam pelaksanaan latihan keamanan (5 drills). Sementara itu, LCT Radja Samudera Abadi mencatat jumlah isu teknis terbanyak (4 kasus) yang didominasi oleh masalah peralatan komunikasi keselamatan darurat (SART & EPIRB).
+            </div>
+        </section>
+
+        <!-- SECTION 3: COMPARISON MATRIX -->
+        <section id="sec-comparison" class="hidden animate-fade-in">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 mb-2">Matriks Komparasi Operasional</h2>
+                <p class="text-slate-600 max-w-3xl leading-relaxed">
+                    Matriks ini membedah data spesifik dari keempat kapal ke dalam tabel perbandingan fungsional. Ini memungkinkan pihak manajemen untuk melakukan evaluasi silang (cross-evaluation) secara cepat mengenai personel kunci, lokasi terakhir kapal, status rapat keselamatan, dan jenis latihan keamanan spesifik yang dilakukan selama Januari 2026.
+                </p>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse whitespace-nowrap">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200">
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Parameter Laporan</th>
+                                <th class="px-6 py-4 text-sm font-bold text-slate-800 bg-white border-l border-slate-100">Cinta Samudera Abadi</th>
+                                <th class="px-6 py-4 text-sm font-bold text-slate-800 bg-white border-l border-slate-100">LAS 2</th>
+                                <th class="px-6 py-4 text-sm font-bold text-slate-800 bg-white border-l border-slate-100">Radja Samudera Abadi</th>
+                                <th class="px-6 py-4 text-sm font-bold text-slate-800 bg-white border-l border-slate-100">Dewa Samudera Abadi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100" id="comparison-tbody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal for Ship Details -->
+    <div id="shipModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl w-full max-w-2xl shadow-2xl transform transition-all overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-slate-800 px-6 py-4 flex justify-between items-center text-white">
+                <div class="flex items-center space-x-3">
+                    <span class="text-2xl">🚢</span>
+                    <h2 class="text-xl font-bold" id="modal-ship-name">Nama Kapal</h2>
+                </div>
+                <button onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Personnel Info -->
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 border-b pb-2">Personel Kunci</h4>
+                        <ul class="space-y-4">
+                            <li class="flex items-start">
+                                <span class="bg-blue-100 text-blue-700 p-2 rounded mr-3 text-sm">⚓</span>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800" id="modal-master">Name</p>
+                                    <p class="text-xs text-slate-500">Master / Nakhoda</p>
+                                </div>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="bg-emerald-100 text-emerald-700 p-2 rounded mr-3 text-sm">🛡️</span>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800" id="modal-sso">Name</p>
+                                    <p class="text-xs text-slate-500">Ship Security Officer (SSO)</p>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Operations Info -->
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 border-b pb-2">Data Operasional (Jan '26)</h4>
+                        <ul class="space-y-3 text-sm text-slate-700">
+                            <li class="flex justify-between">
+                                <span class="text-slate-500">📍 Lokasi Terakhir:</span>
+                                <span class="font-medium text-slate-900" id="modal-location">Pos</span>
+                            </li>
+                            <li class="flex justify-between">
+                                <span class="text-slate-500">📋 Safety Meeting:</span>
+                                <span class="font-medium text-slate-900" id="modal-meeting">Date</span>
+                            </li>
+                            <li class="flex justify-between">
+                                <span class="text-slate-500">🚨 Tema Drill:</span>
+                                <span class="font-medium text-slate-900 text-right max-w-[150px] truncate" id="modal-drill-theme">Theme</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Issues Block -->
+                <div class="bg-amber-50 rounded-xl p-5 border border-amber-100">
+                    <h4 class="text-xs font-bold text-amber-800 uppercase tracking-wider mb-3">⚠️ Temuan Kerusakan & Isu Teknis</h4>
+                    <ul id="modal-issues-list" class="list-disc pl-5 space-y-1 text-sm text-amber-900">
+                        <!-- Populated by JS -->
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button onclick="closeModal()" class="px-5 py-2 bg-slate-200 text-slate-700 hover:bg-slate-300 font-medium rounded-lg transition text-sm">Tutup Panel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Javascript Logic -->
+    <script>
+        // Data Storage: Extracted from Source PDF Reports
+        const fleetData = [
+            {
+                id: 'csa',
+                name: 'LCT Cinta Samudera Abadi',
+                compliance: 92,
+                drills: 3,
+                issues: 2,
+                status: 'Operasional',
+                lastSafetyMeeting: '16 Jan 2026',
+                drillTheme: 'Stow Away',
+                criticalFaults: ['Navtex Error', 'Radio VHF Modulasi'],
+                location: 'Laut Jawa (Java Sea)',
+                sso: 'Dwi Aditia Andriawan',
+                master: 'Safri'
+            },
+            {
+                id: 'las2',
+                name: 'LCT LAS 2',
+                compliance: 98,
+                drills: 4,
+                issues: 1,
+                status: 'Operasional',
+                lastSafetyMeeting: '26 Jan 2026',
+                drillTheme: 'Unidentified Object Drill',
+                criticalFaults: ['Base Plate Lock (Selesai/Unlashing Risk)'],
+                location: 'Selat Madura',
+                sso: 'Supriadi',
+                master: 'Hasrul'
+            },
+            {
+                id: 'rsa',
+                name: 'LCT Radja Samudera Abadi',
+                compliance: 95,
+                drills: 3,
+                issues: 4,
+                status: 'Maintenance',
+                lastSafetyMeeting: '27 Jan 2026',
+                drillTheme: 'Unidentified Object Drill',
+                criticalFaults: ['SART Battery Expired', 'EPIRB Service Required', 'Navtex Error', 'Dinamo Mesin Jangkar'],
+                location: 'Samarinda / Java Sea',
+                sso: 'Arbi Jusandi',
+                master: 'Darwin Luthan Mahmud'
+            },
+            {
+                id: 'dsa',
+                name: 'LCT Dewa Samudera Abadi',
+                compliance: 96,
+                drills: 5,
+                issues: 2,
+                status: 'Operasional',
+                lastSafetyMeeting: '20 Jan 2026',
+                drillTheme: 'Pirates Attack Drill',
+                criticalFaults: ['Dispenser Rusak', 'Selang PMK'],
+                location: 'Tanjung Lapa',
+                sso: 'Gunawan',
+                master: 'Raja Am Sisamal'
+            }
+        ];
+
+        // State Management
+        let currentTab = 'overview';
+        let chartsInitialized = false;
+
+        // Initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            renderShipCards();
+            renderComparisonTable();
+        });
+
+        // Functional Navigation
+        function switchTab(tabId) {
+            // Update buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+
+            // Hide all sections
+            ['sec-overview', 'sec-analytics', 'sec-comparison'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+                document.getElementById(id).classList.remove('block');
+            });
+
+            // Show selected section
+            document.getElementById(`sec-${tabId}`).classList.remove('hidden');
+            document.getElementById(`sec-${tabId}`).classList.add('block');
+
+            // Lazy load charts to ensure canvas dimensions are correct
+            if (tabId === 'analytics' && !chartsInitialized) {
+                initCharts();
+                chartsInitialized = true;
+            }
+        }
+
+        // Render Overview Cards
+        function renderShipCards() {
+            const container = document.getElementById('ship-cards-container');
+            container.innerHTML = '';
+
+            fleetData.forEach(ship => {
+                const isMaintenance = ship.status === 'Maintenance';
+                const statusColor = isMaintenance ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
+                const statusIndicator = isMaintenance ? 'bg-amber-400' : 'bg-emerald-500';
+
+                const cardHTML = `
+                    <div onclick="openModal('${ship.id}')" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md hover:border-blue-300 transition-all cursor-pointer group">
+                        <div class="h-1.5 w-full ${statusIndicator}"></div>
+                        <div class="p-5">
+                            <div class="flex justify-between items-start mb-4">
+                                <h4 class="font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors">${ship.name}</h4>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <div class="flex justify-between text-xs mb-1">
+                                    <span class="text-slate-500">Skor Kepatuhan</span>
+                                    <span class="font-bold text-slate-700">${ship.compliance}%</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-1.5">
+                                    <div class="bg-blue-500 h-1.5 rounded-full" style="width: ${ship.compliance}%"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="px-2 py-1 rounded-md font-medium ${statusColor}">${ship.status}</span>
+                                <div class="flex space-x-3 text-slate-500">
+                                    <span title="Security Drills">🛡️ ${ship.drills}</span>
+                                    <span title="Technical Issues" class="${ship.issues > 2 ? 'text-rose-500 font-bold' : ''}">⚠️ ${ship.issues}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', cardHTML);
+            });
+        }
+
+        // Render Comparison Matrix
+        function renderComparisonTable() {
+            const tbody = document.getElementById('comparison-tbody');
+            
+            const rows = [
+                { label: '🧑‍✈️ Nakhoda (Master)', key: 'master' },
+                { label: '👮 SSO', key: 'sso' },
+                { label: '📍 Posisi Terakhir', key: 'location' },
+                { label: '📅 Safety Meeting', key: 'lastSafetyMeeting' },
+                { label: '🚨 Tema Drill Utama', key: 'drillTheme' },
+                { label: '✅ Tingkat Kepatuhan', key: 'compliance', suffix: '%' },
+                { label: '⚠️ Jumlah Isu Teknis', key: 'issues', suffix: ' Temuan' }
+            ];
+
+            let html = '';
+            rows.forEach(row => {
+                html += `<tr class="hover:bg-slate-50 transition-colors">
+                    <td class="px-6 py-4 text-sm font-medium text-slate-600">${row.label}</td>`;
+                
+                fleetData.forEach(ship => {
+                    let val = ship[row.key] + (row.suffix ? row.suffix : '');
+                    let styling = "text-slate-800";
+                    
+                    // Specific highlight logic
+                    if(row.key === 'issues' && ship[row.key] > 2) styling = "text-rose-600 font-bold";
+                    if(row.key === 'compliance' && ship[row.key] > 95) styling = "text-emerald-600 font-bold";
+
+                    html += `<td class="px-6 py-4 text-sm border-l border-slate-100 ${styling}">${val}</td>`;
+                });
+                html += `</tr>`;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        // Initialize Charts (Chart.js)
+        function initCharts() {
+            // Setup generic options to strictly respect chart containers
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false, // CRITICAL: allows chart to fill defined container height
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            };
+
+            // 1. Bar Chart: Drills
+            const ctxDrill = document.getElementById('drillChart').getContext('2d');
+            new Chart(ctxDrill, {
+                type: 'bar',
+                data: {
+                    labels: fleetData.map(s => s.name.replace('LCT ', '')), // Wrapped naturally by chart.js if needed
+                    datasets: [{
+                        label: 'Jumlah Pelaksanaan Drill',
+                        data: fleetData.map(s => s.drills),
+                        backgroundColor: '#3b82f6', // blue-500
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+
+            // 2. Doughnut Chart: Issues
+            const ctxIssue = document.getElementById('issueChart').getContext('2d');
+            new Chart(ctxIssue, {
+                type: 'doughnut',
+                data: {
+                    labels: fleetData.map(s => s.name.replace('LCT ', '')),
+                    datasets: [{
+                        data: fleetData.map(s => s.issues),
+                        backgroundColor: [
+                            '#60a5fa', // blue-400
+                            '#34d399', // emerald-400
+                            '#fbbf24', // amber-400
+                            '#f87171'  // red-400
+                        ],
+                        borderWidth: 2,
+                        hoverOffset: 4
+                    }]
+                },
+                options: commonOptions
+            });
+        }
+
+        // Modal Logic
+        function openModal(shipId) {
+            const ship = fleetData.find(s => s.id === shipId);
+            if(!ship) return;
+
+            document.getElementById('modal-ship-name').textContent = ship.name;
+            document.getElementById('modal-master').textContent = ship.master;
+            document.getElementById('modal-sso').textContent = ship.sso;
+            document.getElementById('modal-location').textContent = ship.location;
+            document.getElementById('modal-meeting').textContent = ship.lastSafetyMeeting;
+            document.getElementById('modal-drill-theme').textContent = ship.drillTheme;
+
+            const issuesList = document.getElementById('modal-issues-list');
+            issuesList.innerHTML = '';
+            if(ship.criticalFaults.length > 0) {
+                ship.criticalFaults.forEach(fault => {
+                    issuesList.innerHTML += `<li>${fault}</li>`;
+                });
+            } else {
+                issuesList.innerHTML = `<li class="text-emerald-600 font-medium list-none">✅ Tidak ada kerusakan kritis dilaporkan.</li>`;
+            }
+
+            document.getElementById('shipModal').classList.remove('hidden');
+            // Prevent background scrolling
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            document.getElementById('shipModal').classList.add('hidden');
+            // Restore background scrolling
+            document.body.style.overflow = 'auto';
+        }
+
+        // Close modal on outside click
+        document.getElementById('shipModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>
