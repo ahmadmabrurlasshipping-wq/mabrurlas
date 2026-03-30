@@ -1,543 +1,2559 @@
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistem Monitoring ISM-ISPS Armada</title>
+    <title>Aplikasi Manajemen Crew Kapal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- Chosen Palette: Minimalist Maritime (Slate-50 background, Blue-600 primary, Emerald-500 success, Rose-500 danger, White cards) -->
-    
-    <!-- Application Structure Plan: 
-    Aplikasi ini menggunakan struktur "Executive Dashboard" dengan navigasi tab. 
-    Alasannya: Laporan ISM/ISPS memiliki metrik yang padat (kepatuhan, drill, isu teknis) untuk banyak kapal. Struktur dashboard memungkinkan pengguna melihat gambaran besar (Overview) terlebih dahulu, lalu menggali detail (Drill-down ke kartu kapal), dan melakukan analisis berdampingan (Comparison Matrix). 
-    - Tab 1: Ringkasan Eksekutif (KPI utama dan status singkat tiap kapal).
-    - Tab 2: Analisis Visual (Grafik interaktif untuk membandingkan metrik secara langsung).
-    - Tab 3: Matriks Komparasi (Tabel detail fungsional dari keempat kapal).
-    -->
-
-    <!-- Visualization & Content Choices: 
-    1. KPI Cards -> Goal: Inform -> Method: Styled HTML Divs with Unicode Icons -> Justification: Cepat memberikan ringkasan status armada.
-    2. Status Kapal (Cards) -> Goal: Organize & Inform -> Method: HTML Grid with Clickable Modals -> Justification: Memudahkan pemilihan spesifik kapal tanpa membebani halaman utama.
-    3. Perbandingan Drill (Chart) -> Goal: Compare -> Method: Bar Chart (Chart.js) -> Justification: Sangat efektif membandingkan kuantitas (jumlah drill) secara visual antar 4 kapal.
-    4. Distribusi Isu Teknis (Chart) -> Goal: Proportions/Relationships -> Method: Doughnut Chart (Chart.js) -> Justification: Menunjukkan proporsi beban maintenance di seluruh armada.
-    5. Matriks Operasional -> Goal: Compare -> Method: HTML Table with JS Sorting -> Justification: Format terbaik untuk melihat detail tekstual (nama master, lokasi, dll) berdampingan.
-    -->
-
-    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
-
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
-        /* Essential Chart Container Styling per Requirements */
-        .chart-container {
-            position: relative;
-            width: 100%;
-            max-width: 700px;
-            margin-left: auto;
-            margin-right: auto;
-            height: 300px; /* Base height */
-            max-height: 350px;
-            overflow: hidden;
-        }
-        @media (min-width: 768px) {
-            .chart-container {
-                height: 350px;
-            }
-        }
-        @media (min-width: 1024px) {
-            .chart-container {
-                max-width: 100%; /* Expands in larger grid columns */
-            }
-        }
-
-        /* Custom Scrollbar for a cleaner look */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        .tab-btn.active {
-            border-bottom: 2px solid #2563EB;
-            color: #2563EB;
-            font-weight: 600;
-        }
+        body { font-family: "Segoe UI", Tahoma, sans-serif; }
+        .page { display: none; }
+        .page.active { display: block; }
+        .nav-active { background-color: #1e40af; color: #fff; }
+        .card-active { border-color: #1d4ed8; background-color: #eff6ff; }
+        .modal-open { overflow: hidden; }
+        .crew-sheet-block { border: 1px solid #e2e8f0; border-radius: 0.75rem; overflow: hidden; background: #fff; }
+        .crew-sheet-head { background: #0f172a; color: #f8fafc; padding: 0.65rem 0.9rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+        .crew-sheet-head h4 { font-size: 0.9rem; font-weight: 700; letter-spacing: 0.02em; }
+        .crew-sheet-head span { font-size: 0.75rem; color: #cbd5e1; }
+        .crew-sheet-table { width: 100%; border-collapse: collapse; }
+        .crew-sheet-table th,
+        .crew-sheet-table td { border-bottom: 1px solid #e2e8f0; padding: 0.55rem 0.65rem; font-size: 0.76rem; text-align: left; white-space: nowrap; }
+        .crew-sheet-table thead th { background: #f8fafc; color: #334155; font-weight: 700; text-transform: uppercase; font-size: 0.67rem; letter-spacing: 0.03em; }
+        .crew-sheet-empty { padding: 1rem; text-align: center; color: #64748b; font-size: 0.85rem; }
+        .crew-detail-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+        @media (min-width: 960px) { .crew-detail-grid { grid-template-columns: repeat(2, 1fr); } }
+        .crew-detail-card { border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.8rem 0.9rem; }
+        .crew-detail-card h5 { font-weight: 700; font-size: 0.86rem; margin-bottom: 0.45rem; color: #1e293b; }
+        .crew-detail-item { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.2rem 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.78rem; }
+        .crew-detail-item:last-child { border-bottom: none; }
+        .crew-detail-item b { color: #334155; font-weight: 600; }
+        .crew-detail-item span { color: #0f172a; text-align: right; word-break: break-word; }
     </style>
 </head>
-<body class="bg-slate-50 font-sans text-slate-800 antialiased selection:bg-blue-200">
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+    <div class="min-h-screen flex flex-col lg:flex-row">
+        <aside class="w-full lg:w-72 bg-slate-900 text-slate-200">
+            <div class="px-6 py-5 border-b border-slate-700">
+                <h1 class="text-xl font-bold">Crew Manager</h1>
+                <p class="text-xs text-slate-400 mt-1">Aplikasi Manajemen Crew Kapal</p>
+            </div>
+            <nav class="p-4 space-y-2">
+                <button data-page="dashboard" class="nav-btn nav-active w-full text-left px-4 py-3 rounded-md hover:bg-slate-800">Dashboard</button>
+                <button data-page="armada" class="nav-btn w-full text-left px-4 py-3 rounded-md hover:bg-slate-800">Armada & Crew</button>
+                <button data-page="vessels" class="nav-btn w-full text-left px-4 py-3 rounded-md hover:bg-slate-800">Database Armada</button>
+                <button data-page="certificates" class="nav-btn w-full text-left px-4 py-3 rounded-md hover:bg-slate-800">Crew Certificates</button>
+                <button data-page="laporan" class="nav-btn w-full text-left px-4 py-3 rounded-md hover:bg-slate-800">Form Laporan</button>
+                <button data-page="riwayat" class="nav-btn w-full text-left px-4 py-3 rounded-md hover:bg-slate-800">Riwayat Laporan</button>
+            </nav>
+            <div class="px-4 mt-4">
+                <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+                    <p class="text-sm text-white font-semibold">Ahmad MAbrur</p>
+                    <p class="text-xs text-slate-400">Crewing Coordinator</p>
+                </div>
+            </div>
+            <div class="px-4 py-6 text-xs text-slate-400">
+                <p>Data tersimpan otomatis (online saat Web App, lokal saat offline).</p>
+            </div>
+        </aside>
 
-    <!-- Top Navigation -->
-    <nav class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <span class="text-2xl mr-2">⚓</span>
-                    <span class="font-bold text-lg text-slate-900 tracking-tight">ISM-ISPS <span class="text-blue-600">Monitor</span></span>
+        <main class="flex-1">
+            <header class="bg-white border-b border-slate-200 px-5 md:px-8 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                <h2 id="page-title" class="text-2xl font-bold">Dashboard</h2>
+                <div class="flex items-center gap-2">
+                    <button id="btn-share-page" type="button" class="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm hover:bg-indigo-700">Share Halaman</button>
+                    <p class="text-sm text-slate-500">Waktu sistem: <span id="clock"></span></p>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <span class="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">Periode: Januari 2026</span>
+            </header>
+
+            <section id="page-dashboard" class="page active p-5 md:p-8 space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    <div class="bg-white rounded-xl border border-slate-200 p-5">
+                        <p class="text-xs uppercase font-semibold text-slate-500">Total Kapal</p>
+                        <p id="kpi-ships" class="text-3xl font-bold mt-2">0</p>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 p-5">
+                        <p class="text-xs uppercase font-semibold text-slate-500">Total Crew</p>
+                        <p id="kpi-crew" class="text-3xl font-bold mt-2">0</p>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 p-5">
+                        <p class="text-xs uppercase font-semibold text-slate-500">Crew Onboard</p>
+                        <p id="kpi-onboard" class="text-3xl font-bold mt-2">0</p>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 p-5">
+                        <p class="text-xs uppercase font-semibold text-slate-500">Peringatan Sertifikat</p>
+                        <p id="kpi-warning" class="text-3xl font-bold mt-2 text-rose-600">0</p>
+                    </div>
                 </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-xl border border-slate-200 p-5">
+                        <h3 class="font-semibold mb-4">Status Sertifikat</h3>
+                        <div class="h-72"><canvas id="cert-chart"></canvas></div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 p-5">
+                        <h3 class="font-semibold mb-4">Distribusi Status per Kapal</h3>
+                        <div class="h-72"><canvas id="status-chart"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200 p-5">
+                    <h3 class="font-semibold mb-4">Monitoring Expiry Sertifikat per Jabatan</h3>
+                    <div class="overflow-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-100 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-3 text-left">Jabatan</th>
+                                    <th class="px-4 py-3 text-left">Total Wajib</th>
+                                    <th class="px-4 py-3 text-left">Expired</th>
+                                    <th class="px-4 py-3 text-left">Warning &lt;30</th>
+                                    <th class="px-4 py-3 text-left">Missing</th>
+                                </tr>
+                            </thead>
+                            <tbody id="role-cert-table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="page-armada" class="page p-5 md:p-8 space-y-6">
+                <div class="bg-white border border-slate-200 rounded-xl p-4 md:p-5">
+                    <div class="flex flex-col lg:flex-row gap-3 lg:items-end">
+                        <div class="w-full lg:w-1/3">
+                            <label for="search-crew" class="text-sm font-medium">Cari Crew</label>
+                            <input id="search-crew" type="text" placeholder="Nama atau jabatan" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                        </div>
+                        <div class="w-full lg:w-1/4">
+                            <label for="status-filter" class="text-sm font-medium">Filter Status</label>
+                            <select id="status-filter" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                                <option value="All">Semua Status</option>
+                                <option value="Onboard">Onboard</option>
+                                <option value="Cuti">Cuti</option>
+                                <option value="Sakit">Sakit</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-wrap gap-2 lg:ml-auto">
+                            <button id="btn-add-crew" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700">Tambah Crew</button>
+                            <button id="btn-import-crew" class="bg-violet-600 text-white px-4 py-2 rounded-md text-sm hover:bg-violet-700">Import Excel</button>
+                            <button id="btn-export-crew" class="bg-emerald-600 text-white px-4 py-2 rounded-md text-sm hover:bg-emerald-700">Export Crew CSV</button>
+                            <input id="input-import-crew" type="file" accept=".xlsx,.xls" class="hidden">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl p-4 md:p-5">
+                    <h3 class="font-semibold mb-3">Manajemen Armada</h3>
+                    <form id="armada-form" class="flex flex-col md:flex-row gap-2 md:items-center">
+                        <input id="armada-index" type="hidden">
+                        <input id="armada-name" type="text" class="w-full md:w-80 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Nama armada, contoh: MT Ocean 6" required>
+                        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm hover:bg-indigo-700">Simpan Armada</button>
+                        <button id="btn-cancel-armada-edit" type="button" class="bg-slate-200 text-slate-700 px-4 py-2 rounded-md text-sm hover:bg-slate-300">Batal Edit</button>
+                    </form>
+                    <div id="armada-list" class="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2"></div>
+                </div>
+
+                <div id="ship-cards" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3"></div>
+
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                        <h3 id="crew-table-title" class="font-semibold">Daftar Crew</h3>
+                        <span id="crew-table-count" class="text-sm text-slate-500">0 data</span>
+                    </div>
+                    <div id="crew-table-body" class="p-4 space-y-4">
+                        <div class="crew-sheet-empty">Belum ada data.</div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="page-vessels" class="page p-5 md:p-8 space-y-6">
+                <div class="bg-white border border-slate-200 rounded-xl p-4 md:p-5">
+                    <h3 class="font-semibold mb-3">Database Armada</h3>
+                    <form id="vessel-form" class="space-y-4">
+                        <input id="vessel-id" type="hidden">
+                        <div class="flex flex-col md:flex-row gap-4">
+                            <div>
+                                <label class="text-sm font-medium">Foto Armada</label>
+                                <input id="vessel-photo" type="file" accept="image/*" class="mt-1 text-sm">
+                                <img id="vessel-photo-preview" class="hidden mt-2 w-40 h-28 object-cover border rounded" alt="Foto Armada">
+                                <button id="btn-clear-vessel-photo" type="button" class="hidden mt-2 bg-slate-200 text-slate-700 px-3 py-1 rounded text-xs">Hapus Foto</button>
+                            </div>
+                        </div>
+                        <div id="vessel-form-fields" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+                        <div class="flex gap-2">
+                            <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm hover:bg-indigo-700">Simpan Armada</button>
+                            <button id="btn-cancel-vessel" type="button" class="bg-slate-200 text-slate-700 px-4 py-2 rounded-md text-sm hover:bg-slate-300">Batal Edit</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                        <h3 class="font-semibold">Daftar Armada</h3>
+                        <span id="vessel-count" class="text-sm text-slate-500">0 data</span>
+                    </div>
+                    <div class="overflow-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-100 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-3 text-left">Foto</th>
+                                    <th class="px-4 py-3 text-left">Vessel Name</th>
+                                    <th class="px-4 py-3 text-left">IMO</th>
+                                    <th class="px-4 py-3 text-left">Call Sign</th>
+                                    <th class="px-4 py-3 text-left">MMSI</th>
+                                    <th class="px-4 py-3 text-left">Vessel Type</th>
+                                    <th class="px-4 py-3 text-left">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vessel-table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="page-certificates" class="page p-5 md:p-8 space-y-6">
+                <div class="bg-white border border-slate-200 rounded-xl p-4 md:p-5">
+                    <h3 class="font-semibold mb-3">Crew Certificates Monitoring</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div>
+                            <label class="text-sm font-medium">Kapal</label>
+                            <select id="cert-filter-ship" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"></select>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium">Jabatan</label>
+                            <select id="cert-filter-role" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"></select>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium">Status Sertifikat</label>
+                            <select id="cert-filter-status" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                                <option value="All">Semua</option>
+                                <option value="Valid">Valid</option>
+                                <option value="Expired">Expired</option>
+                                <option value="Missing">Belum Ada</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <label class="inline-flex items-center gap-2 text-sm">
+                                <input id="cert-show-optional" type="checkbox" class="rounded border-slate-300" checked>
+                                Tampilkan sertifikat optional
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                        <h3 class="font-semibold">Daftar Sertifikat Crew</h3>
+                        <span id="cert-table-count" class="text-sm text-slate-500">0 data</span>
+                    </div>
+                    <div class="overflow-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-100 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-3 text-left">Nama Crew</th>
+                                    <th class="px-4 py-3 text-left">Jabatan</th>
+                                    <th class="px-4 py-3 text-left">Kapal</th>
+                                    <th class="px-4 py-3 text-left">Sertifikat</th>
+                                    <th class="px-4 py-3 text-left">Status</th>
+                                    <th class="px-4 py-3 text-left">Masa Berlaku</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cert-table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            <section id="page-laporan" class="page p-5 md:p-8">
+                <div class="bg-white border border-slate-200 rounded-xl p-5 md:p-6 max-w-4xl">
+                    <h3 class="text-lg font-semibold mb-4">Form Laporan Perubahan Crew</h3>
+                    <form id="report-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="md:col-span-2">
+                            <label for="report-crew-id" class="text-sm font-medium">Pilih Crew</label>
+                            <select id="report-crew-id" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" required></select>
+                        </div>
+                        <div>
+                            <label for="report-type" class="text-sm font-medium">Jenis Laporan</label>
+                            <select id="report-type" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" required>
+                                <option value="Cuti Tahunan">Cuti Tahunan</option>
+                                <option value="Laporan Sakit">Laporan Sakit</option>
+                                <option value="Kembali Bertugas">Kembali Bertugas</option>
+                                <option value="Update Sertifikat">Update Sertifikat</option>
+                                <option value="Mutasi">Mutasi Kapal</option>
+                            </select>
+                        </div>
+                        <div id="group-target-ship" class="hidden">
+                            <label for="target-ship" class="text-sm font-medium">Kapal Tujuan</label>
+                            <select id="target-ship" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"></select>
+                        </div>
+                        <div id="group-cert-date" class="hidden">
+                            <label for="new-cert-date" class="text-sm font-medium">Tanggal Sertifikat Baru</label>
+                            <input id="new-cert-date" type="date" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label for="report-notes" class="text-sm font-medium">Keterangan</label>
+                            <textarea id="report-notes" rows="4" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Contoh: Cuti 14 hari, pengganti sudah onboard."></textarea>
+                        </div>
+                        <div class="md:col-span-2 flex gap-2">
+                            <button type="submit" class="bg-blue-600 text-white px-5 py-2 rounded-md text-sm hover:bg-blue-700">Simpan Laporan</button>
+                            <button id="btn-export-report" type="button" class="bg-emerald-600 text-white px-5 py-2 rounded-md text-sm hover:bg-emerald-700">Export Laporan CSV</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <section id="page-riwayat" class="page p-5 md:p-8 space-y-4">
+                <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                        <h3 class="font-semibold">Riwayat Laporan</h3>
+                        <div class="flex gap-2">
+                            <button id="btn-reset" class="bg-rose-600 text-white px-4 py-2 rounded-md text-sm hover:bg-rose-700">Reset ke Data Awal</button>
+                        </div>
+                    </div>
+                    <div class="overflow-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-100 text-slate-600">
+                                <tr>
+                                    <th class="px-4 py-3 text-left">Waktu</th>
+                                    <th class="px-4 py-3 text-left">Nama Crew</th>
+                                    <th class="px-4 py-3 text-left">Jenis Laporan</th>
+                                    <th class="px-4 py-3 text-left">Kapal</th>
+                                    <th class="px-4 py-3 text-left">Catatan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="crew-modal" class="hidden fixed inset-0 bg-slate-900/60 p-4 z-50">
+        <div class="max-w-4xl mx-auto mt-8 bg-white rounded-xl border border-slate-200">
+            <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                <h3 id="crew-modal-title" class="font-semibold">Tambah Crew</h3>
+                <button id="btn-close-modal" class="text-slate-500 hover:text-slate-800">Tutup</button>
             </div>
-            <div class="flex space-x-8 overflow-x-auto" id="nav-tabs">
-                <button onclick="switchTab('overview')" class="tab-btn active pb-3 text-sm font-medium text-slate-500 hover:text-slate-700 transition">Ringkasan Eksekutif</button>
-                <button onclick="switchTab('analytics')" class="tab-btn pb-3 text-sm font-medium text-slate-500 hover:text-slate-700 transition">Analisis Visual</button>
-                <button onclick="switchTab('comparison')" class="tab-btn pb-3 text-sm font-medium text-slate-500 hover:text-slate-700 transition">Matriks Komparasi</button>
-            </div>
+            <form id="crew-form" class="p-5 grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[75vh] overflow-y-auto">
+                <input id="crew-id" type="hidden">
+                <div class="md:col-span-2">
+                    <label for="crew-name" class="text-sm font-medium">Nama Crew</label>
+                    <input id="crew-name" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" required>
+                </div>
+                <div>
+                    <label for="crew-call-name" class="text-sm font-medium">Nama Panggilan</label>
+                    <input id="crew-call-name" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-gender" class="text-sm font-medium">Jenis Kelamin</label>
+                    <select id="crew-gender" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                        <option value="">Pilih</option>
+                        <option value="M">Laki-laki</option>
+                        <option value="F">Perempuan</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="crew-birth-date" class="text-sm font-medium">Tanggal Lahir</label>
+                    <input id="crew-birth-date" type="date" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-nationality" class="text-sm font-medium">Kewarganegaraan</label>
+                    <input id="crew-nationality" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Indonesia">
+                </div>
+                <div>
+                    <label for="crew-religion" class="text-sm font-medium">Agama</label>
+                    <input id="crew-religion" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-phone" class="text-sm font-medium">No. Telepon</label>
+                    <input id="crew-phone" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-phone-home" class="text-sm font-medium">No. Telepon Rumah</label>
+                    <input id="crew-phone-home" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-email" class="text-sm font-medium">Email</label>
+                    <input id="crew-email" type="email" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-address" class="text-sm font-medium">Alamat</label>
+                    <input id="crew-address" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-postal-code" class="text-sm font-medium">Kode Pos</label>
+                    <input id="crew-postal-code" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-birth-place" class="text-sm font-medium">Tempat Lahir</label>
+                    <input id="crew-birth-place" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-role" class="text-sm font-medium">Jabatan</label>
+                    <select id="crew-role" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" required></select>
+                </div>
+                <div>
+                    <label for="crew-ship" class="text-sm font-medium">Kapal</label>
+                    <select id="crew-ship" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" required></select>
+                </div>
+                <div>
+                    <label for="crew-status" class="text-sm font-medium">Status</label>
+                    <select id="crew-status" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" required>
+                        <option value="Onboard">Onboard</option>
+                        <option value="Cuti">Cuti</option>
+                        <option value="Sakit">Sakit</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="crew-cert-expiry" class="text-sm font-medium">Masa Berlaku Sertifikat</label>
+                    <input id="crew-cert-expiry" type="date" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" required>
+                </div>
+                <div>
+                    <label for="crew-sign-on" class="text-sm font-medium">Tanggal Sign On</label>
+                    <input id="crew-sign-on" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="dd/mm/yyyy atau serial excel">
+                </div>
+                <div>
+                    <label for="crew-sign-off" class="text-sm font-medium">Tanggal Sign Off</label>
+                    <input id="crew-sign-off" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="dd/mm/yyyy atau serial excel">
+                </div>
+                <div>
+                    <label for="crew-seaman-book" class="text-sm font-medium">No. Buku Pelaut</label>
+                    <input id="crew-seaman-book" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-passport" class="text-sm font-medium">No. Passport</label>
+                    <input id="crew-passport" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-id-number" class="text-sm font-medium">No. KTP / ID</label>
+                    <input id="crew-id-number" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-id-issued" class="text-sm font-medium">Keluaran (ID) KTP</label>
+                    <input id="crew-id-issued" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-family-card-number" class="text-sm font-medium">Nomor Kartu Keluarga</label>
+                    <input id="crew-family-card-number" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-seafarer-code" class="text-sm font-medium">Seafarer Code</label>
+                    <input id="crew-seafarer-code" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-seaman-book-issued" class="text-sm font-medium">Keluaran Buku Pelaut</label>
+                    <input id="crew-seaman-book-issued" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-seaman-book-expiry" class="text-sm font-medium">Masa Berlaku Buku Pelaut</label>
+                    <input id="crew-seaman-book-expiry" type="date" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-passport-issued" class="text-sm font-medium">Keluaran Passport</label>
+                    <input id="crew-passport-issued" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-passport-expiry" class="text-sm font-medium">Masa Berlaku Passport</label>
+                    <input id="crew-passport-expiry" type="date" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-ijazah" class="text-sm font-medium">Ijasah / Certificate</label>
+                    <input id="crew-ijazah" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-certificate-no" class="text-sm font-medium">No. Sertifikat</label>
+                    <input id="crew-certificate-no" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-medical-cert" class="text-sm font-medium">No. Sertifikat Medical</label>
+                    <input id="crew-medical-cert" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-competency-cert" class="text-sm font-medium">No. Sertifikat Kompetensi</label>
+                    <input id="crew-competency-cert" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-last-medical" class="text-sm font-medium">Tanggal Medical Terakhir</label>
+                    <input id="crew-last-medical" type="date" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-emergency-name" class="text-sm font-medium">Emergency Contact</label>
+                    <input id="crew-emergency-name" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-emergency-relation" class="text-sm font-medium">Hubungan Keluarga</label>
+                    <input id="crew-emergency-relation" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-emergency-address" class="text-sm font-medium">Alamat Keluarga</label>
+                    <input id="crew-emergency-address" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-emergency-home-phone" class="text-sm font-medium">No Telp Rumah Darurat</label>
+                    <input id="crew-emergency-home-phone" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-emergency-phone" class="text-sm font-medium">No. HP Darurat</label>
+                    <input id="crew-emergency-phone" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-marital-status" class="text-sm font-medium">Status Keluarga</label>
+                    <select id="crew-marital-status" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                        <option value="">Pilih</option>
+                        <option value="Menikah">Menikah</option>
+                        <option value="Belum Menikah">Belum Menikah</option>
+                        <option value="Lainnya">Lainnya</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="crew-spouse-name" class="text-sm font-medium">Nama Istri/Suami</label>
+                    <input id="crew-spouse-name" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-spouse-gender" class="text-sm font-medium">Jenis Kelamin Istri/Suami</label>
+                    <input id="crew-spouse-gender" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-spouse-age" class="text-sm font-medium">Umur Istri/Suami</label>
+                    <input id="crew-spouse-age" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div class="md:col-span-2">
+                    <label for="crew-children" class="text-sm font-medium">Data Anak (Nama / Jenis Kelamin / Umur)</label>
+                    <textarea id="crew-children" rows="3" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Pisahkan tiap anak di baris baru"></textarea>
+                </div>
+                <div>
+                    <label for="crew-bank-name" class="text-sm font-medium">Nama Bank</label>
+                    <input id="crew-bank-name" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-bank-account" class="text-sm font-medium">Nomor Rekening</label>
+                    <input id="crew-bank-account" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label for="crew-bank-account-holder" class="text-sm font-medium">Atas Nama Rekening</label>
+                    <input id="crew-bank-account-holder" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                </div>
+                <div class="md:col-span-2">
+                    <label for="crew-doc-checklist" class="text-sm font-medium">Checklist Dokumen (Database Lama)</label>
+                    <textarea id="crew-doc-checklist" rows="4" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"></textarea>
+                </div>
+                <div class="md:col-span-2">
+                    <label for="crew-doc-notes" class="text-sm font-medium">Catatan Dokumen Lainnya</label>
+                    <textarea id="crew-doc-notes" rows="3" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm"></textarea>
+                </div>
+                <div class="md:col-span-2">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm font-semibold">Crew Certificates</p>
+                        <span class="text-xs text-slate-500">Wajib/Optional menyesuaikan jabatan</span>
+                    </div>
+                    <div id="crew-certificates" class="mt-2 space-y-3"></div>
+                </div>
+                <div>
+                    <label for="crew-photo" class="text-sm font-medium">Upload Foto</label>
+                    <input id="crew-photo" type="file" accept="image/*" class="w-full mt-1 text-sm">
+                </div>
+                <div>
+                    <label for="crew-documents" class="text-sm font-medium">Upload Dokumen</label>
+                    <input id="crew-documents" type="file" multiple class="w-full mt-1 text-sm">
+                </div>
+                <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <img id="crew-photo-preview" class="hidden w-32 h-40 object-cover border rounded" alt="Foto Crew">
+                        <button id="btn-clear-photo" type="button" class="hidden mt-2 bg-slate-200 text-slate-700 px-3 py-1 rounded text-xs">Hapus Foto</button>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium mb-1">Dokumen Tersimpan</p>
+                        <div id="crew-documents-list" class="text-xs space-y-1"></div>
+                    </div>
+                </div>
+                <div class="md:col-span-2 flex gap-2">
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700">Simpan</button>
+                    <button id="btn-cancel-modal" type="button" class="bg-slate-200 text-slate-700 px-4 py-2 rounded-md text-sm hover:bg-slate-300">Batal</button>
+                </div>
+            </form>
         </div>
-    </nav>
+    </div>
 
-    <!-- Main Content Container -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-        <!-- SECTION 1: OVERVIEW -->
-        <section id="sec-overview" class="block animate-fade-in">
-            <div class="mb-6">
-                <h2 class="text-2xl font-bold text-slate-800 mb-2">Ringkasan Eksekutif Armada</h2>
-                <p class="text-slate-600 max-w-3xl leading-relaxed">
-                    Bagian ini menyajikan gambaran tingkat tinggi dari kepatuhan operasional kapal berdasarkan laporan ISM dan ISPS Code Januari 2026. Tujuannya adalah memberikan pemahaman instan mengenai status kesiapan, tingkat kepatuhan, dan isu keamanan/keselamatan terkini dari keempat armada LCT PT. Pelayaran Lestari Abadi Serasi.
-                </p>
+    <div id="crew-detail-modal" class="hidden fixed inset-0 bg-slate-900/60 p-4 z-50">
+        <div class="max-w-6xl mx-auto mt-4 bg-white rounded-xl border border-slate-200">
+            <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                <h3 class="font-semibold">Detail Crew</h3>
+                <button id="btn-close-detail-modal" class="text-slate-500 hover:text-slate-800">Tutup</button>
             </div>
-
-            <!-- KPI Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center">
-                    <div class="p-3 bg-blue-50 text-blue-600 rounded-lg text-xl mr-4">🚢</div>
-                    <div>
-                        <p class="text-xs text-slate-500 font-semibold uppercase">Total Kapal</p>
-                        <p class="text-2xl font-bold text-slate-800" id="kpi-total">4 Unit</p>
-                    </div>
-                </div>
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center">
-                    <div class="p-3 bg-emerald-50 text-emerald-600 rounded-lg text-xl mr-4">✅</div>
-                    <div>
-                        <p class="text-xs text-slate-500 font-semibold uppercase">Rata-rata Kepatuhan</p>
-                        <p class="text-2xl font-bold text-slate-800" id="kpi-compliance">95.2%</p>
-                    </div>
-                </div>
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center">
-                    <div class="p-3 bg-indigo-50 text-indigo-600 rounded-lg text-xl mr-4">🛡️</div>
-                    <div>
-                        <p class="text-xs text-slate-500 font-semibold uppercase">Total Security Drill</p>
-                        <p class="text-2xl font-bold text-slate-800" id="kpi-drills">15 Sesi</p>
-                    </div>
-                </div>
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center">
-                    <div class="p-3 bg-amber-50 text-amber-600 rounded-lg text-xl mr-4">⚠️</div>
-                    <div>
-                        <p class="text-xs text-slate-500 font-semibold uppercase">Temuan / Kerusakan</p>
-                        <p class="text-2xl font-bold text-slate-800" id="kpi-issues">9 Kasus</p>
-                    </div>
-                </div>
-            </div>
-
-            <h3 class="text-lg font-bold text-slate-800 mb-4">Status Individu Kapal <span class="text-sm font-normal text-slate-500">(Klik untuk detail)</span></h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6" id="ship-cards-container">
-                <!-- Cards injected via JS -->
-            </div>
-        </section>
-
-        <!-- SECTION 2: ANALYTICS -->
-        <section id="sec-analytics" class="hidden animate-fade-in">
-            <div class="mb-6">
-                <h2 class="text-2xl font-bold text-slate-800 mb-2">Analisis Visual Kinerja</h2>
-                <p class="text-slate-600 max-w-3xl leading-relaxed">
-                    Bagian analisis ini mengubah data tabular dari laporan menjadi visualisasi interaktif. Grafik di bawah ini mendemonstrasikan perbandingan langsung frekuensi latihan keamanan (ISPS Code) dan distribusi temuan teknis (ISM Code) antar kapal. Visualisasi ini krusial untuk mengidentifikasi kapal mana yang paling proaktif atau yang membutuhkan intervensi pemeliharaan segera.
-                </p>
-            </div>
-
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Chart 1: Drills -->
-                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 class="font-bold text-slate-800 mb-1">Perbandingan Frekuensi Security Drills</h3>
-                    <p class="text-xs text-slate-500 mb-4">Total pelaksanaan drill berdasarkan laporan Januari 2026</p>
-                    <div class="flex-grow flex items-center justify-center">
-                        <div class="chart-container">
-                            <canvas id="drillChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Chart 2: Issues -->
-                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 class="font-bold text-slate-800 mb-1">Distribusi Temuan & Kerusakan Teknis</h3>
-                    <p class="text-xs text-slate-500 mb-4">Proporsi masalah operasional antar kapal bulan ini</p>
-                    <div class="flex-grow flex items-center justify-center">
-                        <div class="chart-container">
-                            <canvas id="issueChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="mt-6 bg-blue-50 border border-blue-100 p-4 rounded-xl text-sm text-blue-800">
-                <span class="font-bold">💡 Analisis Insight:</span> LCT Dewa Samudera Abadi menunjukkan tingkat proaktifitas tertinggi dalam pelaksanaan latihan keamanan (5 drills). Sementara itu, LCT Radja Samudera Abadi mencatat jumlah isu teknis terbanyak (4 kasus) yang didominasi oleh masalah peralatan komunikasi keselamatan darurat (SART & EPIRB).
-            </div>
-        </section>
-
-        <!-- SECTION 3: COMPARISON MATRIX -->
-        <section id="sec-comparison" class="hidden animate-fade-in">
-            <div class="mb-6">
-                <h2 class="text-2xl font-bold text-slate-800 mb-2">Matriks Komparasi Operasional</h2>
-                <p class="text-slate-600 max-w-3xl leading-relaxed">
-                    Matriks ini membedah data spesifik dari keempat kapal ke dalam tabel perbandingan fungsional. Ini memungkinkan pihak manajemen untuk melakukan evaluasi silang (cross-evaluation) secara cepat mengenai personel kunci, lokasi terakhir kapal, status rapat keselamatan, dan jenis latihan keamanan spesifik yang dilakukan selama Januari 2026.
-                </p>
-            </div>
-
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse whitespace-nowrap">
-                        <thead>
-                            <tr class="bg-slate-50 border-b border-slate-200">
-                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Parameter Laporan</th>
-                                <th class="px-6 py-4 text-sm font-bold text-slate-800 bg-white border-l border-slate-100">Cinta Samudera Abadi</th>
-                                <th class="px-6 py-4 text-sm font-bold text-slate-800 bg-white border-l border-slate-100">LAS 2</th>
-                                <th class="px-6 py-4 text-sm font-bold text-slate-800 bg-white border-l border-slate-100">Radja Samudera Abadi</th>
-                                <th class="px-6 py-4 text-sm font-bold text-slate-800 bg-white border-l border-slate-100">Dewa Samudera Abadi</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100" id="comparison-tbody">
-                            <!-- Populated by JS -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-    </main>
-
-    <!-- Modal for Ship Details -->
-    <div id="shipModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl w-full max-w-2xl shadow-2xl transform transition-all overflow-hidden flex flex-col max-h-[90vh]">
-            <div class="bg-slate-800 px-6 py-4 flex justify-between items-center text-white">
-                <div class="flex items-center space-x-3">
-                    <span class="text-2xl">🚢</span>
-                    <h2 class="text-xl font-bold" id="modal-ship-name">Nama Kapal</h2>
-                </div>
-                <button onclick="closeModal()" class="text-slate-300 hover:text-white text-2xl leading-none">&times;</button>
-            </div>
-            
-            <div class="p-6 overflow-y-auto">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <!-- Personnel Info -->
-                    <div>
-                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 border-b pb-2">Personel Kunci</h4>
-                        <ul class="space-y-4">
-                            <li class="flex items-start">
-                                <span class="bg-blue-100 text-blue-700 p-2 rounded mr-3 text-sm">⚓</span>
-                                <div>
-                                    <p class="text-sm font-bold text-slate-800" id="modal-master">Name</p>
-                                    <p class="text-xs text-slate-500">Master / Nakhoda</p>
-                                </div>
-                            </li>
-                            <li class="flex items-start">
-                                <span class="bg-emerald-100 text-emerald-700 p-2 rounded mr-3 text-sm">🛡️</span>
-                                <div>
-                                    <p class="text-sm font-bold text-slate-800" id="modal-sso">Name</p>
-                                    <p class="text-xs text-slate-500">Ship Security Officer (SSO)</p>
-                                </div>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <!-- Operations Info -->
-                    <div>
-                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 border-b pb-2">Data Operasional (Jan '26)</h4>
-                        <ul class="space-y-3 text-sm text-slate-700">
-                            <li class="flex justify-between">
-                                <span class="text-slate-500">📍 Lokasi Terakhir:</span>
-                                <span class="font-medium text-slate-900" id="modal-location">Pos</span>
-                            </li>
-                            <li class="flex justify-between">
-                                <span class="text-slate-500">📋 Safety Meeting:</span>
-                                <span class="font-medium text-slate-900" id="modal-meeting">Date</span>
-                            </li>
-                            <li class="flex justify-between">
-                                <span class="text-slate-500">🚨 Tema Drill:</span>
-                                <span class="font-medium text-slate-900 text-right max-w-[150px] truncate" id="modal-drill-theme">Theme</span>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Issues Block -->
-                <div class="bg-amber-50 rounded-xl p-5 border border-amber-100">
-                    <h4 class="text-xs font-bold text-amber-800 uppercase tracking-wider mb-3">⚠️ Temuan Kerusakan & Isu Teknis</h4>
-                    <ul id="modal-issues-list" class="list-disc pl-5 space-y-1 text-sm text-amber-900">
-                        <!-- Populated by JS -->
-                    </ul>
-                </div>
-            </div>
-            
-            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-                <button onclick="closeModal()" class="px-5 py-2 bg-slate-200 text-slate-700 hover:bg-slate-300 font-medium rounded-lg transition text-sm">Tutup Panel</button>
+            <div id="crew-detail-content" class="p-5 max-h-[80vh] overflow-y-auto">
+                <div class="crew-detail-grid" id="crew-detail-grid"></div>
             </div>
         </div>
     </div>
 
-    <!-- Javascript Logic -->
     <script>
-        // Data Storage: Extracted from Source PDF Reports
-        const fleetData = [
+        const STORAGE_KEY = "crew-manager-v5";
+        const REPORTS_KEY = "crew-manager-reports-v1";
+        const SHIPS_KEY = "crew-manager-ships-v1";
+        const IS_GAS = typeof google !== "undefined" && google.script && google.script.run;
+        const gasCall = (fn, ...args) => new Promise((resolve, reject) => {
+            google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fn](...args);
+        });
+        const gasApi = IS_GAS ? {
+            getState: () => gasCall("apiGetState"),
+            saveCrew: (crew) => gasCall("saveCrew", crew),
+            deleteCrew: (id) => gasCall("deleteCrew", id),
+            importCrewList: (rows) => gasCall("importCrewList", rows),
+            saveReport: (report) => gasCall("saveReport", report),
+            saveVessel: (vessel) => gasCall("saveVessel", vessel),
+            deleteVessel: (id) => gasCall("deleteVessel", id),
+            uploadFile: (payload) => gasCall("uploadFile", payload)
+        } : null;
+        const IMPORTED_ROSTER = [
+{"ship": "LCT_LAS_2", "name": "A. WIRPIAN IRVAN", "role": "Nahkoda", "birthDate": "26/10/1992", "nationality": "ID", "seafarerCode": "6201324815", "seamanBook": "J 019457", "certExpiry": "19/04/2027", "ijazah": "ANT II", "certificateNo": "6201324815N22423", "phone": "6282190910354", "email": "warvianvian@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "SUPRIADI", "role": "Mualim I", "birthDate": "22/06/1992", "nationality": "ID", "seafarerCode": "6201338702", "seamanBook": "F 336521", "certExpiry": "2027-02-06 00:00:00", "ijazah": "ANT III MN", "certificateNo": "6201338702M30416", "phone": "6282341730502", "email": "supriadi0961@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "CHRISTOVER AGUSTINO", "role": "Mualim II", "birthDate": "2001-10-08 00:00:00", "nationality": "ID", "seafarerCode": "6212126089", "seamanBook": "H 009787", "certExpiry": "2027-05-07 00:00:00", "ijazah": "ANT - III", "certificateNo": "6212126089N32424", "phone": "6285159311959", "email": "christover1010@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "AMRUL", "role": "KKM", "birthDate": "24/06/1983", "nationality": "ID", "seafarerCode": "6200269541", "seamanBook": "H 087864", "certExpiry": "22/10/2027", "ijazah": "ATT III", "certificateNo": "6200269541S30217", "phone": "6282125125465", "email": "amrullappo@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "MARWAN", "role": "Masinis II", "birthDate": "1998-03-10 00:00:00", "nationality": "ID", "seafarerCode": "6211592612", "seamanBook": "J 032705", "certExpiry": "2027-04-07 00:00:00", "ijazah": "ATT II", "certificateNo": "6211592612T20424", "phone": "6282235477962", "email": "marwansuli@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "MUH. SYAEFULLAH SYAFRIL", "role": "Masinis III", "birthDate": "2000-10-03 00:00:00", "nationality": "ID", "seafarerCode": "6212023348", "seamanBook": "G 081448", "certExpiry": "2026-09-07 00:00:00", "ijazah": "ATT III", "certificateNo": "6212023348T30424", "phone": "6282259120499", "email": "msyaefullah536@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "BACTYAR AFANDI", "role": "Juru Mudi I", "birthDate": "1999-10-04 00:00:00", "nationality": "ID", "seafarerCode": "6212210635", "seamanBook": "H 070830", "certExpiry": "23/08/2027", "ijazah": "RATINGS ABLE", "certificateNo": "6212210635330522", "phone": "6285256239642", "email": "rezkibudiman02@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "REZKI BUDIMAN", "role": "Juru Mudi II", "birthDate": "16/03/2002", "nationality": "ID", "seafarerCode": "6212258952", "seamanBook": "I 037293", "certExpiry": "2026-10-04 00:00:00", "ijazah": "RATINGS", "certificateNo": "6212258952330623", "phone": "6282331776546", "email": "bactyarafandi12@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "ARFA", "role": "Juru Mudi III", "birthDate": "15/04/1998", "nationality": "ID", "seafarerCode": "6211721437", "seamanBook": "L 086575", "certExpiry": "24/11/2028", "ijazah": "RATINGS ABLE", "certificateNo": "6211721437344724", "phone": "6282331776546", "email": "patobaarfa31@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "ARJUNA ASRI", "role": "Juru Minyak I", "birthDate": "1992-08-03 00:00:00", "nationality": "ID", "seafarerCode": "6212425279", "seamanBook": "J 058738", "certExpiry": "25/06/2027", "ijazah": "RATINGS", "certificateNo": "6212425279350424", "phone": "6281243878006", "email": "zulfikarzulfikar9966@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "SUDIRMAN", "role": "Juru Minyak II", "birthDate": "19/09/1999", "nationality": "ID", "seafarerCode": "6211933344", "seamanBook": "F 253961", "certExpiry": "16/09/2026", "ijazah": "ATT V", "certificateNo": "6211933344T50424", "phone": "6285398218836", "email": "arjunaasri008@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "ZULFIKAR", "role": "Juru Minyak III", "birthDate": "26/02/2002", "nationality": "ID", "seafarerCode": "6212126706", "seamanBook": "G 111327", "certExpiry": "22/10/2028", "ijazah": "RATINGS ABLE", "certificateNo": "6212126706420125", "phone": "6282293253612", "email": "suditt19@gmail.com"},
+            {"ship": "LCT_LAS_2", "name": "RAFAEL DWI MANTOFANY", "role": "Juru Masak", "birthDate": "1998-02-07 00:00:00", "nationality": "ID", "seafarerCode": "6212520793", "seamanBook": "L 022246", "certExpiry": "13/06/2028", "ijazah": "RATINGS", "certificateNo": "6212520793330425", "phone": "6287805835600", "email": "raefalraefal@gmail.com"},
+            {"ship": "LCT_RSA", "name": "YUSRI YULIUS", "role": "Nahkoda", "birthDate": "1975-09-08 00:00:00", "nationality": "ID", "seafarerCode": "6200042560", "seamanBook": "I 038180", "certExpiry": "13/06/2026", "ijazah": "ANT - II", "certificateNo": "6200042560N2041", "phone": "6281244757765", "email": "yusri.yulius75@gmail.com"},
+            {"ship": "LCT_RSA", "name": "ARBI JUSANDI", "role": "Mualim I", "birthDate": "1997-08-07 00:00:00", "nationality": "ID", "seafarerCode": "6211750634", "seamanBook": "J 114907", "certExpiry": "2027-04-12 00:00:00", "ijazah": "ANT - III", "certificateNo": "6211750634M30623", "phone": "6282347246116", "email": "arbijusandi@gmail.com"},
+            {"ship": "LCT_RSA", "name": "ASWANDI", "role": "Mualim II", "birthDate": "2001-12-04 00:00:00", "nationality": "ID", "seafarerCode": "6212105914", "seamanBook": "G 081970", "certExpiry": "23/07/2026", "ijazah": "ANT - III", "certificateNo": "6212105914N30423", "phone": "6282195838515", "email": "aswandimuliadi12@gmail.com"},
+            {"ship": "LCT_RSA", "name": "KISWANTO", "role": "KKM", "birthDate": "1992-05-09 00:00:00", "nationality": "ID", "seafarerCode": "6211427487", "seamanBook": "H 030050", "certExpiry": "21/04/2027", "ijazah": "ATT - III M", "certificateNo": "6211427487S30621", "phone": "6282231554838", "email": "kiswantodahri53@gmail.com"},
+            {"ship": "LCT_RSA", "name": "MUHAMMAD ANDREAS RINALDO", "role": "Masinis II", "birthDate": "1997-08-06 00:00:00", "nationality": "ID", "seafarerCode": "6211750561", "seamanBook": "L 077677", "certExpiry": "29/10/2028", "ijazah": "ATT - III", "certificateNo": "6211750561T30421", "phone": "628588883157", "email": "andreasrinaldo86@gmail.com"},
+            {"ship": "LCT_RSA", "name": "MUH. ALDI FARI", "role": "Masinis III", "birthDate": "21/05/2003", "nationality": "ID", "seafarerCode": "6212215024", "seamanBook": "I 064999", "certExpiry": "23/07/2026", "ijazah": "ATT - III", "certificateNo": "6212215024T30625", "phone": "6285242583304", "email": "aldialdifari14@gmail.com"},
+            {"ship": "LCT_RSA", "name": "ASRUL ASWAR", "role": "Juru Mudi I", "birthDate": "17/09/1998", "nationality": "ID", "seafarerCode": "6211840328", "seamanBook": "F 290191", "certExpiry": "22/11/2026", "ijazah": "RATINGS", "certificateNo": "6211840328330620", "phone": "6282229106579", "email": "rikiardiansyahriki95@gmail.com"},
+            {"ship": "LCT_RSA", "name": "IRWANSYAH", "role": "Juru Mudi II", "birthDate": "17/02/2001", "nationality": "ID", "seafarerCode": "6212228545", "seamanBook": "H 054564", "certExpiry": "2027-12-08 00:00:00", "ijazah": "RATINGS", "certificateNo": "6212228545330422", "phone": "6282192094394", "email": "ii8512983@gmail.com"},
+            {"ship": "LCT_RSA", "name": "MUH. IKFAR RAMAHDANI", "role": "Juru Mudi III", "birthDate": "2005-09-11 00:00:00", "nationality": "ID", "seafarerCode": "6212456277", "seamanBook": "J 095349", "certExpiry": "2027-06-11 00:00:00", "ijazah": "RATINGS", "certificateNo": "6212456277330424", "phone": "6288211941266", "email": "muhikfarramahdani@gmail.com"},
+            {"ship": "LCT_RSA", "name": "JAMALUDDIN", "role": "Juru Minyak I", "birthDate": "22/05/1998", "nationality": "ID", "seafarerCode": "6212341987", "seamanBook": "I 104530", "certExpiry": "27/10/2026", "ijazah": "RATINGS", "certificateNo": "6212341987350423", "phone": "6281219612700", "email": "fajarabadi1997@gmail.com"},
+            {"ship": "LCT_RSA", "name": "PAJAR ABADI JACOBUS", "role": "Juru Minyak II", "birthDate": "18/05/1997", "nationality": "ID", "seafarerCode": "6211816251", "seamanBook": "F 253651", "certExpiry": "2026-10-09 00:00:00", "ijazah": "RATINGS", "certificateNo": "6211816251350620", "phone": "6285340837899", "email": "ilhammaulanaa615@gmail.com"},
+            {"ship": "LCT_RSA", "name": "ILHAM MAULANA", "role": "Juru Minyak III", "birthDate": "24/07/1998", "nationality": "ID", "seafarerCode": "6212425326", "seamanBook": "J 058573", "certExpiry": "2027-12-06 00:00:00", "ijazah": "RATINGS", "certificateNo": "6212425326350424", "phone": "6281244160437", "email": "jamalzxuan6@gmail.com"},
+            {"ship": "LCT_RSA", "name": "RIKI ARDIANSYAH", "role": "Juru Masak", "birthDate": "2006-12-05 00:00:00", "nationality": "ID", "seafarerCode": "6212356202", "seamanBook": "I 091462", "certExpiry": "14/12/2026", "ijazah": "RATINGS", "certificateNo": "6212356202330124", "phone": "6282348760149", "email": "asrulaswar176@gmail.com"},
+            {"ship": "LCT_CSA", "name": "ZULKIFLI", "role": "Nahkoda", "birthDate": "27/04/1995", "nationality": "ID", "seafarerCode": "6200178756", "seamanBook": "J058110", "certExpiry": "18/08/2027", "ijazah": "ANT-II", "certificateNo": "6200178756M30620", "phone": "6282122775169", "email": "zulkiflifiki27@gmail.com"},
+            {"ship": "LCT_CSA", "name": "DWI ADITIA ANDRIAWAN", "role": "Mualim I", "birthDate": "17/06/1995", "nationality": "ID", "seafarerCode": "6211801836", "seamanBook": "I 077076", "certExpiry": "2026-08-05 00:00:00", "ijazah": "ANT-III-M", "certificateNo": "6211428797M30420", "phone": "6282346408283", "email": "dwiaditya8188@gmail.com"},
+            {"ship": "LCT_CSA", "name": "ASWAR", "role": "Mualim II", "birthDate": "1999-09-09 00:00:00", "nationality": "ID", "seafarerCode": "6211801836", "seamanBook": "L 085964", "certExpiry": "2028-06-11 00:00:00", "ijazah": "ANT-III", "certificateNo": "6211801836N32422", "phone": "6282122835565", "email": "aswars567@gmail.com"},
+            {"ship": "LCT_CSA", "name": "AHMAD", "role": "KKM", "birthDate": "1991-02-03 00:00:00", "nationality": "ID", "seafarerCode": "6211425894", "seamanBook": "X5335440", "certExpiry": "2026-10-03 00:00:00", "ijazah": "ATT-III M", "certificateNo": "6211425894S30420", "phone": "6282252910296", "email": "ahmadtaruna127@gmail.com"},
+            {"ship": "LCT_CSA", "name": "IRFANDY A.MALIKIDDIN", "role": "Masinis II", "birthDate": "27/04/1994", "nationality": "ID", "seafarerCode": "6211402764", "seamanBook": "G 040200", "certExpiry": "15/12/2027", "ijazah": "ATT-II", "certificateNo": "6211402764T20220", "phone": "6282117031574", "email": "natemalikiddin@gmail.com"},
+            {"ship": "LCT_CSA", "name": "MUHAJIR", "role": "Masinis III", "birthDate": "27/04/1994", "nationality": "ID", "seafarerCode": "6211540515", "seamanBook": "I 065209", "certExpiry": "2026-07-11 00:00:00", "ijazah": "ATT-III M", "certificateNo": "6211540515T30419", "phone": "6281268666621", "email": "muhajirajhyr94@gmail.com"},
+            {"ship": "LCT_CSA", "name": "SAHRUL GUNAWAN", "role": "Juru Mudi I", "birthDate": "2001-05-05 00:00:00", "nationality": "ID", "seafarerCode": "6211929430", "seamanBook": "F 253501", "certExpiry": "2026-05-09 00:00:00", "ijazah": "RATINGS", "certificateNo": "6211929430345322", "phone": "6285255391250", "email": "junaedilea98@gmail.com"},
+            {"ship": "LCT_CSA", "name": "MUHAMMAD AKBAR", "role": "Juru Mudi II", "birthDate": "1999-01-07 00:00:00", "nationality": "ID", "seafarerCode": "6211832306", "seamanBook": "J 007220", "certExpiry": "20/05/2027", "ijazah": "RATINGS", "certificateNo": "6211832306330424", "phone": "6282223658496", "email": "gunawansyah027@gmail.com"},
+            {"ship": "LCT_CSA", "name": "JUSNAEDI", "role": "Juru Mudi III", "birthDate": "19/02/1998", "nationality": "ID", "seafarerCode": "6211814007", "seamanBook": "L 002127", "certExpiry": "14/04/2028", "ijazah": "RATINGS", "certificateNo": "6211814007330622", "phone": "6282196834506", "email": "gunawansyah027@gmail.com"},
+            {"ship": "LCT_CSA", "name": "M WARISTYA SAPUTRA WS", "role": "Juru Minyak I", "birthDate": "20/01/2007", "nationality": "ID", "seafarerCode": "6212502897", "seamanBook": "L 004521", "certExpiry": "28/04/2028", "ijazah": "RATINGS", "certificateNo": "6212502897350425", "phone": "6287765388427", "email": "waristya495@gmail.com"},
+            {"ship": "LCT_CSA", "name": "MUSLIMIN", "role": "Juru Minyak II", "birthDate": "27/04/1998", "nationality": "ID", "seafarerCode": "6211604768", "seamanBook": "I 104672", "certExpiry": "2026-04-11 00:00:00", "ijazah": "RATINGS ABLE", "certificateNo": "6211604768O10621", "phone": "6285244785893", "email": "musliminpelaut98@gmail.com"},
+            {"ship": "LCT_CSA", "name": "AFRIDAL SISWANDI", "role": "Juru Minyak III", "birthDate": "28/04/1996", "nationality": "ID", "seafarerCode": "6212133145", "seamanBook": "J080665", "certExpiry": "2027-04-12 00:00:00", "ijazah": "RATINGS", "certificateNo": "6212133145354722", "phone": "6282293253612", "email": "afdalcorslet@gmail.com"},
+            {"ship": "LCT_CSA", "name": "FAISAL", "role": "Juru Masak", "birthDate": "1995-05-08 00:00:00", "nationality": "ID", "seafarerCode": "6212425266", "seamanBook": "J 058774", "certExpiry": "27/06/2027", "ijazah": "RATINGS", "certificateNo": "6212425266010424", "phone": "6281295947309", "email": "faisalfaisal8353@gmail.com"},
+            {"ship": "LCT_DSA", "name": "RAJA AM SISAMAL", "role": "Nahkoda", "birthDate": "1977-05-09 00:00:00", "nationality": "ID", "seafarerCode": "6200099261", "seamanBook": "G 068694", "certExpiry": "15/03/2026", "ijazah": "ANT - II", "certificateNo": "6200099261N20423", "phone": "6281356006822", "email": "amsisamalraja@gmail.com"},
+            {"ship": "LCT_DSA", "name": "MIRWAN", "role": "Mualim I", "birthDate": "1984-02-05 00:00:00", "nationality": "ID", "seafarerCode": "6200318368", "seamanBook": "F 318245", "certExpiry": "23/01/2027", "ijazah": "ANT III M", "certificateNo": "6200318368M30423", "phone": "6282339297211", "email": "jadnggaming@gmail.com"},
+            {"ship": "LCT_DSA", "name": "M. SYAIFUL ANWAR", "role": "Mualim II", "birthDate": "1996-08-02 00:00:00", "nationality": "ID", "seafarerCode": "6211811171", "seamanBook": "F 209121", "certExpiry": "2026-06-05 00:00:00", "ijazah": "ANT - III", "certificateNo": "6211811171N30322", "phone": "6289648680588", "email": "muhamadsyaifulanwar01@gmail.com"},
+            {"ship": "LCT_DSA", "name": "AHLAL IRFAN", "role": "KKM", "birthDate": "15/12/1991", "nationality": "ID", "seafarerCode": "6201319171", "seamanBook": "J 088913", "certExpiry": "2027-07-10 00:00:00", "ijazah": "ATT - II", "certificateNo": "6201319171T20418", "phone": "6281339352120", "email": "ahlaldhira1512@gmail.com"},
+            {"ship": "LCT_DSA", "name": "EKO NUR CAHYO", "role": "Masinis II", "birthDate": "25/06/1994", "nationality": "ID", "seafarerCode": "6211547556", "seamanBook": "I 080455", "certExpiry": "2026-03-11 00:00:00", "ijazah": "ATT - III", "certificateNo": "6211547556S30321", "phone": "6282231554838", "email": "synystere94@gmail.com"},
+            {"ship": "LCT_DSA", "name": "A. MUH ALIFAR", "role": "Masinis III", "birthDate": "21/10/2001", "nationality": "ID", "seafarerCode": "6212120316", "seamanBook": "G 110754", "certExpiry": "2028-03-08 00:00:00", "ijazah": "ATT - III", "certificateNo": "6212120316T30423", "phone": "6282339297211", "email": "a.muh.alifar02@gmail.com"},
+            {"ship": "LCT_DSA", "name": "IRWAN F", "role": "Juru Mudi I", "birthDate": "26/09/1987", "nationality": "ID", "seafarerCode": "6212408406", "seamanBook": "J 006675", "certExpiry": "18/04/2027", "ijazah": "RATINGS", "certificateNo": "6212408406330424", "phone": "6285825370070", "email": "firwan2896@gmail.com"},
+            {"ship": "LCT_DSA", "name": "MUJAHIDIN", "role": "Juru Mudi II", "birthDate": "21/12/2001", "nationality": "ID", "seafarerCode": "6212535690", "seamanBook": "L 049428", "certExpiry": "2028-02-09 00:00:00", "ijazah": "RATINGS", "certificateNo": "6212535690330424", "phone": "6282339297211", "email": "jadnggaming@gmail.com"},
+            {"ship": "LCT_DSA", "name": "JUAN RAFAEL MONGGESANG", "role": "Juru Mudi III", "birthDate": "14/03/2003", "nationality": "ID", "seafarerCode": "6212303937", "seamanBook": "H 097184", "certExpiry": "24/02/2028", "ijazah": "RATINGS", "certificateNo": "6212303937340625", "phone": "628988717710", "email": "griffinalexander0312@gmail.com"},
+            {"ship": "LCT_DSA", "name": "ABDI REZA PAHLAWAN", "role": "Juru Minyak I", "birthDate": "1991-10-11 00:00:00", "nationality": "ID", "seafarerCode": "6212513286", "seamanBook": "J 063998", "certExpiry": "28/04/2027", "ijazah": "RATINGS", "certificateNo": "6212513286354725", "phone": "6281219612700", "email": "mohamadiksan159@gmail.com"},
+            {"ship": "LCT_DSA", "name": "ANUGERAH LP", "role": "Juru Minyak II", "birthDate": "2000-04-08 00:00:00", "nationality": "ID", "seafarerCode": "6212136278", "seamanBook": "G 111780", "certExpiry": "24/11/2026", "ijazah": "RATINGS", "certificateNo": "6212136278350622", "phone": "6285340837899", "email": "anugerahlp8@gmail.com"},
+            {"ship": "LCT_DSA", "name": "MOHAMAD IKSAN", "role": "Juru Minyak III", "birthDate": "20/06/1984", "nationality": "ID", "seafarerCode": "6211589022", "seamanBook": "F 342925", "certExpiry": "2026-07-04 00:00:00", "ijazah": "RATINGS", "certificateNo": "6211589022350222", "phone": "6281234407324", "email": "ezhazha213@gmail.com"},
+            {"ship": "LCT_DSA", "name": "FIRMAN", "role": "Juru Masak", "birthDate": "27/01/2004", "nationality": "ID", "seafarerCode": "6212554100", "seamanBook": "L 079755", "certExpiry": "29/12/2028", "ijazah": "RATINGS", "certificateNo": "6212554100330425", "phone": "6285656293575", "email": "firmanluki027@gmail.com"},
+            {"ship": "LCT_DSA_7", "name": "Ardianto Saputra", "role": "Nahkoda", "birthDate": null, "nationality": "", "seafarerCode": "", "seamanBook": "", "certExpiry": null, "ijazah": "", "certificateNo": "", "phone": "", "email": ""},
+            {"ship": "LCT_DSA_7", "name": "Hermansyah Hasan", "role": "Mualim I", "birthDate": null, "nationality": "", "seafarerCode": "", "seamanBook": "", "certExpiry": null, "ijazah": "", "certificateNo": "", "phone": "", "email": ""},
+            {"ship": "LCT_DSA_7", "name": "Bayu Sapta Adjie", "role": "Juru Mudi I", "birthDate": null, "nationality": "", "seafarerCode": "", "seamanBook": "", "certExpiry": null, "ijazah": "", "certificateNo": "", "phone": "", "email": ""},
+            {"ship": "LCT_DSA_7", "name": "Sultan", "role": "Juru Mudi II", "birthDate": null, "nationality": "", "seafarerCode": "", "seamanBook": "", "certExpiry": null, "ijazah": "", "certificateNo": "", "phone": "", "email": ""},
+            {"ship": "LCT_DSA_7", "name": "Arwan Efriansuah", "role": "Juru Mudi III", "birthDate": null, "nationality": "", "seafarerCode": "", "seamanBook": "", "certExpiry": null, "ijazah": "", "certificateNo": "", "phone": "", "email": ""},
+            {"ship": "LCT_DSA_7", "name": "Sumardin", "role": "Juru Minyak I", "birthDate": null, "nationality": "", "seafarerCode": "", "seamanBook": "", "certExpiry": null, "ijazah": "", "certificateNo": "", "phone": "", "email": ""},
+            {"ship": "LCT_DSA_7", "name": "Baharuddin", "role": "Juru Minyak II", "birthDate": null, "nationality": "", "seafarerCode": "", "seamanBook": "", "certExpiry": null, "ijazah": "", "certificateNo": "", "phone": "", "email": ""},
+            {"ship": "LCT_DSA_7", "name": "Arfan", "role": "Juru Minyak III", "birthDate": null, "nationality": "", "seafarerCode": "", "seamanBook": "", "certExpiry": null, "ijazah": "", "certificateNo": "", "phone": "", "email": ""}
+];
+        const DEFAULT_SHIPS = [...new Set(IMPORTED_ROSTER.map((r) => r.ship))];
+
+        const VESSEL_FIELDS = [{"key":"vessel_name","label":"Vessel Name"},{"key":"imo_number","label":"IMO Number"},{"key":"call_sign","label":"Call Sign"},{"key":"mmsi","label":"MMSI"},{"key":"flag_state","label":"Flag State"},{"key":"port_of_registry","label":"Port of Registry"},{"key":"vessel_type","label":"Vessel Type"},{"key":"year_built","label":"Year Built"},{"key":"builder_shipyard","label":"Builder Shipyard"},{"key":"hull_number","label":"Hull Number"},{"key":"classification_society","label":"Classification Society"},{"key":"owner","label":"Owner"},{"key":"ship_manager","label":"Ship Manager"},{"key":"gross_tonnage_gt","label":"Gross Tonnage (GT)"},{"key":"net_tonnage_nt","label":"Net Tonnage (NT)"},{"key":"deadweight_dwt","label":"Deadweight (DWT)"},{"key":"length_overall_loa","label":"Length Overall (LOA)"},{"key":"length_between_perpendicular_lbp","label":"Length Between Perpendicular (LBP)"},{"key":"breadth","label":"Breadth"},{"key":"depth","label":"Depth"},{"key":"draft","label":"Draft"},{"key":"deck_type","label":"Deck Type"},{"key":"main_engine_brand","label":"Main Engine Brand"},{"key":"main_engine_type","label":"Main Engine Type"},{"key":"main_engine_power","label":"Main Engine Power"},{"key":"generator_brand","label":"Generator Brand"},{"key":"generator_capacity","label":"Generator Capacity"},{"key":"emergency_generator_brand_capacity","label":"Emergency  Generator Brand &  Capacity"},{"key":"number_of_generator","label":"Number of Generator"},{"key":"radar","label":"Radar"},{"key":"ais","label":"AIS"},{"key":"gps","label":"GPS"},{"key":"echosounder","label":"Echosounder"},{"key":"magnetic_compass","label":"Magnetic Compass"},{"key":"bnwas","label":"BNWAS"},{"key":"navtex","label":"Navtex"},{"key":"aldis_lamp","label":"Aldis Lamp"},{"key":"vhf_radio","label":"VHF Radio"},{"key":"mf_hf_radio","label":"MF/HF Radio"},{"key":"gmdss_console","label":"GMDSS Console"},{"key":"epirb","label":"EPIRB"},{"key":"sart","label":"SART"},{"key":"ais_sart","label":"AIS SART"},{"key":"inmarsat","label":"Inmarsat"},{"key":"photo_url","label":"Photo URL"}];
+
+        const CERT_MASTER = [{"Cert_ID":"CERT001","Category":"TravelDoc","Cert_Name":"National ID(KTP)"},{"Cert_ID":"CERT002","Category":"TravelDoc","Cert_Name":"Passpor"},{"Cert_ID":"CERT003","Category":"TravelDoc","Cert_Name":"Medical Fitness Certificate"},{"Cert_ID":"CERT004","Category":"TravelDoc","Cert_Name":"Seamans Book"},{"Cert_ID":"CERT005","Category":"STCW","Cert_Name":"CoC ( ANT / ATT )"},{"Cert_ID":"CERT006","Category":"STCW","Cert_Name":"Endorsment ( CoE)"},{"Cert_ID":"CERT007","Category":"STCW","Cert_Name":"Operator Radio Umum (ORU/GOC)"},{"Cert_ID":"CERT008","Category":"STCW","Cert_Name":"Basic Safety Training"},{"Cert_ID":"CERT009","Category":"STCW","Cert_Name":"Profiency in survival craft and recue boat"},{"Cert_ID":"CERT010","Category":"STCW","Cert_Name":"Advance Fire Figthing (AFF)"},{"Cert_ID":"CERT011","Category":"STCW","Cert_Name":"GMDSS Endorsment"},{"Cert_ID":"CERT012","Category":"STCW","Cert_Name":"GMDSS"},{"Cert_ID":"CERT013","Category":"STCW","Cert_Name":"Medical Care on Board (MC)"},{"Cert_ID":"CERT014","Category":"STCW","Cert_Name":"Medical First Aid (MEFA)"},{"Cert_ID":"CERT015","Category":"STCW","Cert_Name":"Basic Training For oil & Chemical Tank (BOCT)"},{"Cert_ID":"CERT016","Category":"STCW","Cert_Name":"AOT"},{"Cert_ID":"CERT017","Category":"STCW","Cert_Name":"Radar Simulator (RS)"},{"Cert_ID":"CERT018","Category":"STCW","Cert_Name":"Arpa Simulator (AS)"},{"Cert_ID":"CERT019","Category":"STCW","Cert_Name":"IMDG"},{"Cert_ID":"CERT020","Category":"STCW","Cert_Name":"Ship Security Officer (SSO)"},{"Cert_ID":"CERT021","Category":"STCW","Cert_Name":"Bridge Resource Management"},{"Cert_ID":"CERT022","Category":"STCW","Cert_Name":"Engine Resource Room Management"},{"Cert_ID":"CERT023","Category":"STCW","Cert_Name":"Operation use of ECDIS Program"},{"Cert_ID":"CERT024","Category":"STCW","Cert_Name":"SAT"},{"Cert_ID":"CERT025","Category":"STCW","Cert_Name":"SDSD"},{"Cert_ID":"CERT026","Category":"STCW","Cert_Name":"ISM Code"},{"Cert_ID":"CERT027","Category":"STCW","Cert_Name":"Crown Management"},{"Cert_ID":"CERT028","Category":"STCW","Cert_Name":"Crisis Management & Human Behour"}];
+
+        const PROFILE_OVERRIDES = [
             {
-                id: 'csa',
-                name: 'LCT Cinta Samudera Abadi',
-                compliance: 92,
-                drills: 3,
-                issues: 2,
-                status: 'Operasional',
-                lastSafetyMeeting: '16 Jan 2026',
-                drillTheme: 'Stow Away',
-                criticalFaults: ['Navtex Error', 'Radio VHF Modulasi'],
-                location: 'Laut Jawa (Java Sea)',
-                sso: 'Dwi Aditia Andriawan',
-                master: 'Safri'
+                matchName: "Irfandy A Malikiddin",
+                data: {
+                    phone: "0822 1703 1574",
+                    email: "natemalikiddin@gmail.com",
+                    address: "Kel. Toboleu RT/RW 017/06 Kec. Ternate Utara",
+                    birthPlace: "TERNATE",
+                    religion: "MUSLIM",
+                    nationality: "INDONESIA",
+                    idNumber: "8271030508940003",
+                    seamanBook: "G 040200",
+                    passport: "C 9289424",
+                    seafarerCode: "6211402764",
+                    ijazah: "ATT II",
+                    emergencyName: "Kiky Nur Andini",
+                    emergencyPhone: "0823 9338 8292",
+                    bankName: "BNI",
+                    bankAccount: "1617 7905 70",
+                    docChecklist: "Seaman Book: G 040200 (exp 15/12/2025)\nPassport: C 9289424 (exp 01/09/2027)\nKTP: 8271030508940003\nCOC/EOC: 6211402764T20220\nEndorsement: 6211402764TB0220\nBST, AFF, MEFA, MC, SAT, SSO: terdaftar pada file checklist."
+                }
             },
             {
-                id: 'las2',
-                name: 'LCT LAS 2',
-                compliance: 98,
-                drills: 4,
-                issues: 1,
-                status: 'Operasional',
-                lastSafetyMeeting: '26 Jan 2026',
-                drillTheme: 'Unidentified Object Drill',
-                criticalFaults: ['Base Plate Lock (Selesai/Unlashing Risk)'],
-                location: 'Selat Madura',
-                sso: 'Supriadi',
-                master: 'Hasrul'
-            },
-            {
-                id: 'rsa',
-                name: 'LCT Radja Samudera Abadi',
-                compliance: 95,
-                drills: 3,
-                issues: 4,
-                status: 'Maintenance',
-                lastSafetyMeeting: '27 Jan 2026',
-                drillTheme: 'Unidentified Object Drill',
-                criticalFaults: ['SART Battery Expired', 'EPIRB Service Required', 'Navtex Error', 'Dinamo Mesin Jangkar'],
-                location: 'Samarinda / Java Sea',
-                sso: 'Arbi Jusandi',
-                master: 'Darwin Luthan Mahmud'
-            },
-            {
-                id: 'dsa',
-                name: 'LCT Dewa Samudera Abadi',
-                compliance: 96,
-                drills: 5,
-                issues: 2,
-                status: 'Operasional',
-                lastSafetyMeeting: '20 Jan 2026',
-                drillTheme: 'Pirates Attack Drill',
-                criticalFaults: ['Dispenser Rusak', 'Selang PMK'],
-                location: 'Tanjung Lapa',
-                sso: 'Gunawan',
-                master: 'Raja Am Sisamal'
+                matchName: "Raja AM Sisamal",
+                data: {
+                    phone: "0813 5600 6822",
+                    email: "amsisamalraja@gmail.com",
+                    address: "Pandang-pandang, RT/RW 003/003, Kec. Somba Opu, Kab. Gowa, Sulawesi Selatan",
+                    birthPlace: "Sengkang",
+                    birthDate: "1977-09-05",
+                    religion: "Islam",
+                    nationality: "Indonesia",
+                    idNumber: "2171120509779008",
+                    seamanBook: "G 068694",
+                    passport: "C 7189910",
+                    emergencyName: "Hj. NURHAYATI",
+                    bankName: "BNI",
+                    bankAccount: "0246967627",
+                    docChecklist: "Template checklist tersedia pada file CEKLIST DOKUMEN CREW. Nomor dokumen dapat dilengkapi pada form ini."
+                }
             }
         ];
 
-        // State Management
-        let currentTab = 'overview';
-        let chartsInitialized = false;
+        const ROLES = [
+            "Nakhoda", "Mualim I", "Mualim II", "Mualim III", "KKM", "K.K.M",
+            "Masinis II", "Masinis III", "Juru Mudi I", "Juru Mudi II", "Juru Mudi III",
+            "Juru Minyak I", "Juru Minyak II", "Juru Minyak III", "Juru Masak", "Koki", "Oiler I", "Oiler II", "Oiler III"
+        ];
 
-        // Initialization
-        document.addEventListener('DOMContentLoaded', () => {
-            renderShipCards();
-            renderComparisonTable();
-        });
+        const state = {
+            ships: [],
+            crew: [],
+            reports: [],
+            vessels: [],
+            filterShip: "All",
+            charts: {},
+            activePage: "dashboard"
+        };
 
-        // Functional Navigation
-        function switchTab(tabId) {
-            // Update buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            event.currentTarget.classList.add('active');
+        let modalPhotoBuffer = "";
+        let modalDocumentsBuffer = [];
+        let vesselPhotoBuffer = "";
 
-            // Hide all sections
-            ['sec-overview', 'sec-analytics', 'sec-comparison'].forEach(id => {
-                document.getElementById(id).classList.add('hidden');
-                document.getElementById(id).classList.remove('block');
+        function addDays(date, days) {
+            const d = new Date(date);
+            d.setDate(d.getDate() + days);
+            return d;
+        }
+
+        function toDateInputValue(date) {
+            return new Date(date).toISOString().slice(0, 10);
+        }
+
+        function formatDate(date) {
+            return new Date(date).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+        }
+
+        function certStatus(dateStr) {
+            const now = new Date();
+            const date = new Date(dateStr);
+            const diff = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
+            if (diff < 0) return { label: "Expired", cls: "text-rose-700 bg-rose-100", level: -1 };
+            if (diff <= 30) return { label: "Warning <30 hari", cls: "text-amber-700 bg-amber-100", level: 0 };
+            return { label: "Valid", cls: "text-emerald-700 bg-emerald-100", level: 1 };
+        }
+
+        function defaultCrewDocs(index) {
+            return {
+                callName: "",
+                gender: "",
+                birthDate: "",
+                birthPlace: "",
+                religion: "",
+                nationality: "Indonesia",
+                phone: "",
+                homePhone: "",
+                email: "",
+                address: "",
+                postalCode: "",
+                signOn: "",
+                signOff: "",
+                idNumber: "",
+                idIssued: "",
+                familyCardNumber: "",
+                seamanBook: `SB-${String(1000 + index).padStart(4, "0")}`,
+                seamanBookIssued: "",
+                seamanBookExpiry: "",
+                passport: `P-${String(200000 + index).padStart(6, "0")}`,
+                passportIssued: "",
+                passportExpiry: "",
+                seafarerCode: "",
+                ijazah: "",
+                certificateNo: "",
+                medicalCert: `MC-${String(3000 + index).padStart(4, "0")}`,
+                competencyCert: `COC-${String(4000 + index).padStart(4, "0")}`,
+                lastMedicalDate: "",
+                maritalStatus: "",
+                spouseName: "",
+                spouseGender: "",
+                spouseAge: "",
+                childrenData: "",
+                emergencyName: "",
+                emergencyRelation: "",
+                emergencyAddress: "",
+                emergencyHomePhone: "",
+                emergencyPhone: "",
+                bankName: "",
+                bankAccount: "",
+                bankAccountHolder: "",
+                docChecklist: "",
+                docNotes: "",
+                photoDataUrl: "",
+                documents: [],
+                certificates: {}
+            };
+        }
+
+        function normalizeName(value) {
+            return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+        }
+
+        function parseDateValue(raw) {
+            const value = String(raw || "").trim();
+            if (!value) return "";
+            if (/^\d{4,6}$/.test(value)) {
+                const serial = Number(value);
+                const ms = (serial - 25569) * 86400 * 1000;
+                return toDateInputValue(new Date(ms));
+            }
+            if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(value)) {
+                const [d, m, y] = value.split("/").map(Number);
+                return toDateInputValue(new Date(y, m - 1, d));
+            }
+            if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+            if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(value)) {
+                const [d, m, y] = value.split("-").map(Number);
+                return toDateInputValue(new Date(y, m - 1, d));
+            }
+            return "";
+        }
+
+        function fmtSheetDate(value) {
+            if (!value) return "-";
+            const parsed = parseDateValue(value) || String(value);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(parsed)) {
+                const [y, m, d] = parsed.split("-");
+                return `${d}-${m}-${y}`;
+            }
+            return parsed;
+        }
+
+        function fmtDateLong(value) {
+            const parsed = parseDateValue(value);
+            if (!parsed) return "-";
+            return new Date(parsed).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+        }
+
+        function cleanUpper(text) {
+            return String(text || "-").trim().toUpperCase();
+        }
+
+        function createInitialState() {
+            const today = new Date();
+            const ships = [...DEFAULT_SHIPS];
+            const crew = IMPORTED_ROSTER.map((entry, index) => {
+                const certFromSheet = parseDateValue(entry.certExpiry) || parseDateValue(entry.signOff) || parseDateValue(entry.signOn);
+                const certificates = {};
+                if (entry.ijazah || entry.certificateNo || certFromSheet) {
+                    certificates.CERT005 = {
+                        has: true,
+                        number: entry.certificateNo || "",
+                        issueDate: "",
+                        expiryDate: certFromSheet || ""
+                    };
+                }
+                return {
+                    id: `C${String(index + 1).padStart(3, "0")}`,
+                    name: entry.name,
+                    gender: "M",
+                    ship: entry.ship || "UNASSIGNED",
+                    role: entry.role,
+                    status: "Onboard",
+                    certExpiry: certFromSheet || toDateInputValue(addDays(today, 180 + (index % 120))),
+                    ...defaultCrewDocs(index + 1),
+                    birthDate: parseDateValue(entry.birthDate) || "",
+                    nationality: entry.nationality || "Indonesia",
+                    seafarerCode: entry.seafarerCode || "",
+                    seamanBook: entry.seamanBook || "",
+                    ijazah: entry.ijazah || "",
+                    certificateNo: entry.certificateNo || "",
+                    phone: entry.phone || "",
+                    email: entry.email || "",
+                    signOn: entry.signOn || "",
+                    signOff: entry.signOff || "",
+                    certificates
+                };
             });
 
-            // Show selected section
-            document.getElementById(`sec-${tabId}`).classList.remove('hidden');
-            document.getElementById(`sec-${tabId}`).classList.add('block');
+            PROFILE_OVERRIDES.forEach((override) => {
+                const target = crew.find((c) => normalizeName(c.name) === normalizeName(override.matchName));
+                if (target) Object.assign(target, override.data);
+            });
 
-            // Lazy load charts to ensure canvas dimensions are correct
-            if (tabId === 'analytics' && !chartsInitialized) {
-                initCharts();
-                chartsInitialized = true;
+            return { ships, crew, reports: [], vessels: [] };
+        }
+        function loadReportsLocal() {
+            try {
+                const raw = localStorage.getItem(REPORTS_KEY);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_error) {
+                return [];
             }
         }
 
-        // Render Overview Cards
-        function renderShipCards() {
-            const container = document.getElementById('ship-cards-container');
-            container.innerHTML = '';
+        function saveReportsLocal() {
+            localStorage.setItem(REPORTS_KEY, JSON.stringify(state.reports || []));
+        }
 
-            fleetData.forEach(ship => {
-                const isMaintenance = ship.status === 'Maintenance';
-                const statusColor = isMaintenance ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
-                const statusIndicator = isMaintenance ? 'bg-amber-400' : 'bg-emerald-500';
+        function loadShipsLocal() {
+            try {
+                const raw = localStorage.getItem(SHIPS_KEY);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_error) {
+                return [];
+            }
+        }
 
-                const cardHTML = `
-                    <div onclick="openModal('${ship.id}')" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md hover:border-blue-300 transition-all cursor-pointer group">
-                        <div class="h-1.5 w-full ${statusIndicator}"></div>
-                        <div class="p-5">
-                            <div class="flex justify-between items-start mb-4">
-                                <h4 class="font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors">${ship.name}</h4>
-                            </div>
-                            
-                            <div class="mb-4">
-                                <div class="flex justify-between text-xs mb-1">
-                                    <span class="text-slate-500">Skor Kepatuhan</span>
-                                    <span class="font-bold text-slate-700">${ship.compliance}%</span>
-                                </div>
-                                <div class="w-full bg-slate-100 rounded-full h-1.5">
-                                    <div class="bg-blue-500 h-1.5 rounded-full" style="width: ${ship.compliance}%"></div>
-                                </div>
-                            </div>
-                            
-                            <div class="flex items-center justify-between text-xs">
-                                <span class="px-2 py-1 rounded-md font-medium ${statusColor}">${ship.status}</span>
-                                <div class="flex space-x-3 text-slate-500">
-                                    <span title="Security Drills">🛡️ ${ship.drills}</span>
-                                    <span title="Technical Issues" class="${ship.issues > 2 ? 'text-rose-500 font-bold' : ''}">⚠️ ${ship.issues}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                container.insertAdjacentHTML('beforeend', cardHTML);
+        function saveShipsLocal(list) {
+            localStorage.setItem(SHIPS_KEY, JSON.stringify(list || []));
+        }
+
+        function loadVesselsLocal() {
+            try {
+                const raw = localStorage.getItem("crew-manager-vessels-v1");
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_error) {
+                return [];
+            }
+        }
+
+        function saveVesselsLocal(list) {
+            localStorage.setItem("crew-manager-vessels-v1", JSON.stringify(list || []));
+        }
+
+        function mergeCrewDefaults(list) {
+            return (list || []).map((c, idx) => {
+                const merged = { ...defaultCrewDocs(idx + 1), ...c };
+                merged.documents = Array.isArray(merged.documents) ? merged.documents : [];
+                merged.certificates = merged.certificates && typeof merged.certificates === "object" ? merged.certificates : {};
+                return merged;
             });
         }
 
-        // Render Comparison Matrix
-        function renderComparisonTable() {
-            const tbody = document.getElementById('comparison-tbody');
-            
-            const rows = [
-                { label: '🧑‍✈️ Nakhoda (Master)', key: 'master' },
-                { label: '👮 SSO', key: 'sso' },
-                { label: '📍 Posisi Terakhir', key: 'location' },
-                { label: '📅 Safety Meeting', key: 'lastSafetyMeeting' },
-                { label: '🚨 Tema Drill Utama', key: 'drillTheme' },
-                { label: '✅ Tingkat Kepatuhan', key: 'compliance', suffix: '%' },
-                { label: '⚠️ Jumlah Isu Teknis', key: 'issues', suffix: ' Temuan' }
-            ];
+        async function loadState() {
+            if (IS_GAS) {
+                const remote = await gasApi.getState();
+                const crew = mergeCrewDefaults(remote.crew || []);
+                const baseShips = Array.isArray(remote.ships) && remote.ships.length ? remote.ships : [];
+                const extraShips = loadShipsLocal();
+                const vessels = Array.isArray(remote.vessels) ? remote.vessels : [];
+                const ships = [...new Set([...baseShips, ...crew.map((c) => c.ship), ...extraShips, ...vessels.map((v) => v.vessel_name)].filter(Boolean))];
+                const reports = Array.isArray(remote.reports) ? remote.reports : [];
+                return { ships, crew, reports, vessels };
+            }
 
-            let html = '';
-            rows.forEach(row => {
-                html += `<tr class="hover:bg-slate-50 transition-colors">
-                    <td class="px-6 py-4 text-sm font-medium text-slate-600">${row.label}</td>`;
-                
-                fleetData.forEach(ship => {
-                    let val = ship[row.key] + (row.suffix ? row.suffix : '');
-                    let styling = "text-slate-800";
-                    
-                    // Specific highlight logic
-                    if(row.key === 'issues' && ship[row.key] > 2) styling = "text-rose-600 font-bold";
-                    if(row.key === 'compliance' && ship[row.key] > 95) styling = "text-emerald-600 font-bold";
-
-                    html += `<td class="px-6 py-4 text-sm border-l border-slate-100 ${styling}">${val}</td>`;
-                });
-                html += `</tr>`;
-            });
-
-            tbody.innerHTML = html;
-        }
-
-        // Initialize Charts (Chart.js)
-        function initCharts() {
-            // Setup generic options to strictly respect chart containers
-            const commonOptions = {
-                responsive: true,
-                maintainAspectRatio: false, // CRITICAL: allows chart to fill defined container height
-                plugins: {
-                    legend: { position: 'bottom' }
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) {
+                const initial = createInitialState();
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
+                return initial;
+            }
+            try {
+                const parsed = JSON.parse(raw);
+                if (!Array.isArray(parsed.crew) || !Array.isArray(parsed.reports)) {
+                    throw new Error("invalid storage");
                 }
-            };
+                if (!Array.isArray(parsed.ships) || parsed.ships.length === 0) {
+                    parsed.ships = DEFAULT_SHIPS.slice();
+                }
+                parsed.crew = mergeCrewDefaults(parsed.crew);
+                parsed.vessels = Array.isArray(parsed.vessels) ? parsed.vessels : loadVesselsLocal();
+                return parsed;
+            } catch (_error) {
+                const initial = createInitialState();
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
+                return initial;
+            }
+        }
 
-            // 1. Bar Chart: Drills
-            const ctxDrill = document.getElementById('drillChart').getContext('2d');
-            new Chart(ctxDrill, {
-                type: 'bar',
+        function saveState() {
+            if (IS_GAS) {
+                saveReportsLocal();
+                return;
+            }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ ships: state.ships, crew: state.crew, reports: state.reports, vessels: state.vessels }));
+        }
+
+        async function refreshFromServer() {
+            if (!IS_GAS) return;
+            const loaded = await loadState();
+            state.ships = loaded.ships;
+            state.crew = loaded.crew;
+            state.reports = loaded.reports;
+            state.vessels = loaded.vessels || [];
+            rerenderAll();
+        }
+
+        function showPage(page) {
+            state.activePage = page;
+            document.querySelectorAll(".page").forEach((el) => el.classList.remove("active"));
+            document.querySelectorAll(".nav-btn").forEach((el) => el.classList.remove("nav-active"));
+            document.getElementById(`page-${page}`).classList.add("active");
+            document.querySelector(`[data-page="${page}"]`).classList.add("nav-active");
+            const titles = {
+                dashboard: "Dashboard",
+                armada: "Armada & Crew",
+                vessels: "Database Armada",
+                certificates: "Crew Certificates",
+                laporan: "Form Laporan",
+                riwayat: "Riwayat Laporan"
+            };
+            document.getElementById("page-title").textContent = titles[page];
+
+            if (page === "dashboard") renderCharts();
+        }
+
+        function renderKPIs() {
+            const onboard = state.crew.filter((c) => c.status === "Onboard").length;
+            const warning = state.crew.filter((c) => certStatus(c.certExpiry).level <= 0).length;
+
+            document.getElementById("kpi-ships").textContent = state.ships.length;
+            document.getElementById("kpi-crew").textContent = state.crew.length;
+            document.getElementById("kpi-onboard").textContent = onboard;
+            document.getElementById("kpi-warning").textContent = warning;
+        }
+
+        function destroyChart(name) {
+            if (state.charts[name]) {
+                state.charts[name].destroy();
+                state.charts[name] = null;
+            }
+        }
+
+        function renderCharts() {
+            destroyChart("cert");
+            destroyChart("status");
+
+            let valid = 0;
+            let warning = 0;
+            let expired = 0;
+            state.crew.forEach((c) => {
+                const stat = certStatus(c.certExpiry).level;
+                if (stat === 1) valid += 1;
+                if (stat === 0) warning += 1;
+                if (stat === -1) expired += 1;
+            });
+
+            const certCtx = document.getElementById("cert-chart").getContext("2d");
+            state.charts.cert = new Chart(certCtx, {
+                type: "doughnut",
                 data: {
-                    labels: fleetData.map(s => s.name.replace('LCT ', '')), // Wrapped naturally by chart.js if needed
-                    datasets: [{
-                        label: 'Jumlah Pelaksanaan Drill',
-                        data: fleetData.map(s => s.drills),
-                        backgroundColor: '#3b82f6', // blue-500
-                        borderRadius: 4
-                    }]
+                    labels: ["Valid", "Warning <30 hari", "Expired"],
+                    datasets: [{ data: [valid, warning, expired], backgroundColor: ["#10b981", "#f59e0b", "#e11d48"] }]
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }
+            });
+
+            const perShip = state.ships.map((ship) => {
+                const crew = state.crew.filter((c) => c.ship === ship);
+                return {
+                    ship,
+                    onboard: crew.filter((c) => c.status === "Onboard").length,
+                    off: crew.filter((c) => c.status !== "Onboard").length
+                };
+            });
+
+            const statusCtx = document.getElementById("status-chart").getContext("2d");
+            state.charts.status = new Chart(statusCtx, {
+                type: "bar",
+                data: {
+                    labels: perShip.map((s) => s.ship),
+                    datasets: [
+                        { label: "Onboard", data: perShip.map((s) => s.onboard), backgroundColor: "#2563eb" },
+                        { label: "Cuti/Sakit", data: perShip.map((s) => s.off), backgroundColor: "#94a3b8" }
+                    ]
                 },
                 options: {
-                    ...commonOptions,
-                    scales: {
-                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                    maintainAspectRatio: false,
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+                    plugins: { legend: { position: "bottom" } }
+                }
+            });
+        }
+
+        function renderShipCards() {
+            const container = document.getElementById("ship-cards");
+            container.innerHTML = "";
+            const items = [{ name: "All", label: "Semua Kapal" }, ...state.ships.map((ship) => ({ name: ship, label: ship }))];
+            items.forEach((item) => {
+                const count = item.name === "All" ? state.crew.length : state.crew.filter((c) => c.ship === item.name).length;
+                const button = document.createElement("button");
+                button.className = `rounded-lg border px-3 py-3 text-left bg-white hover:bg-slate-50 ${state.filterShip === item.name ? "card-active" : "border-slate-200"}`;
+                button.innerHTML = `<div class="text-sm font-semibold">${item.label}</div><div class="text-xs text-slate-500 mt-1">${count} crew</div>`;
+                button.addEventListener("click", () => {
+                    state.filterShip = item.name;
+                    renderShipCards();
+                    renderCrewTable();
+                });
+                container.appendChild(button);
+            });
+        }
+
+        function badge(status) {
+            if (status === "Onboard") return '<span class="px-2 py-1 rounded text-xs bg-blue-100 text-blue-700">Onboard</span>';
+            if (status === "Cuti") return '<span class="px-2 py-1 rounded text-xs bg-amber-100 text-amber-700">Cuti</span>';
+            return '<span class="px-2 py-1 rounded text-xs bg-rose-100 text-rose-700">Sakit</span>';
+        }
+
+        function filteredCrew() {
+            const query = document.getElementById("search-crew").value.trim().toLowerCase();
+            const status = document.getElementById("status-filter").value;
+
+            return state.crew.filter((crew) => {
+                const byShip = state.filterShip === "All" || crew.ship === state.filterShip;
+                const byStatus = status === "All" || crew.status === status;
+                const byQuery = !query
+                    || crew.name.toLowerCase().includes(query)
+                    || crew.role.toLowerCase().includes(query)
+                    || String(crew.seafarerCode || "").toLowerCase().includes(query)
+                    || String(crew.seamanBook || "").toLowerCase().includes(query);
+                return byShip && byStatus && byQuery;
+            });
+        }
+        function renderCrewTable() {
+            const data = filteredCrew();
+            const container = document.getElementById("crew-table-body");
+            container.innerHTML = "";
+
+            const title = state.filterShip === "All" ? "Daftar Crew - Semua Kapal" : `Daftar Crew - ${state.filterShip}`;
+            document.getElementById("crew-table-title").textContent = title;
+            document.getElementById("crew-table-count").textContent = `${data.length} data`;
+
+            if (data.length === 0) {
+                container.innerHTML = '<div class="crew-sheet-empty">Data tidak ditemukan.</div>';
+                return;
+            }
+
+            const grouped = new Map();
+            data
+                .slice()
+                .sort((a, b) => a.ship.localeCompare(b.ship) || a.name.localeCompare(b.name))
+                .forEach((crew) => {
+                    if (!grouped.has(crew.ship)) grouped.set(crew.ship, []);
+                    grouped.get(crew.ship).push(crew);
+                });
+
+            grouped.forEach((crewList, ship) => {
+                const block = document.createElement("div");
+                block.className = "crew-sheet-block";
+                const rows = crewList.map((crew, idx) => `
+                    <tr>
+                        <td>${idx + 1}</td>
+                        <td>${cleanUpper(crew.name)}</td>
+                        <td>${cleanUpper(crew.gender || "-")}</td>
+                        <td>${fmtSheetDate(crew.birthDate)}</td>
+                        <td>${cleanUpper(crew.nationality || "ID")}</td>
+                        <td>${cleanUpper(crew.seafarerCode)}</td>
+                        <td>${cleanUpper(crew.seamanBook)}</td>
+                        <td>${fmtSheetDate(crew.certExpiry)}</td>
+                        <td>${cleanUpper(crew.role)}</td>
+                        <td>${cleanUpper(crew.ijazah)}</td>
+                        <td>${cleanUpper(crew.certificateNo || crew.competencyCert || crew.medicalCert)}</td>
+                        <td>
+                            <button class="btn-detail text-slate-600 hover:text-slate-900 font-semibold mr-2" data-id="${crew.id}">Detail</button>
+                            <button class="btn-edit text-blue-600 hover:text-blue-800 font-semibold mr-2" data-id="${crew.id}">Edit</button>
+                            <button class="btn-delete text-rose-600 hover:text-rose-800 font-semibold" data-id="${crew.id}">Hapus</button>
+                        </td>
+                    </tr>
+                `).join("");
+
+                block.innerHTML = `
+                    <div class="crew-sheet-head">
+                        <h4>${ship}</h4>
+                        <span>${crewList.length} crew</span>
+                    </div>
+                    <div class="overflow-auto">
+                        <table class="crew-sheet-table">
+                            <thead>
+                                <tr>
+                                    <th>No</th>
+                                    <th>Nama</th>
+                                    <th>Kelamin</th>
+                                    <th>Tgl Lahir</th>
+                                    <th>Kebangsaan</th>
+                                    <th>Kode Pelaut</th>
+                                    <th>No Buku</th>
+                                    <th>Expired</th>
+                                    <th>Jabatan</th>
+                                    <th>Sertifikat</th>
+                                    <th>No Sertifikat</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+                container.appendChild(block);
+            });
+
+            document.querySelectorAll(".btn-detail").forEach((btn) => {
+                btn.addEventListener("click", () => openCrewDetail(btn.dataset.id));
+            });
+            document.querySelectorAll(".btn-edit").forEach((btn) => {
+                btn.addEventListener("click", () => openCrewModal(btn.dataset.id, false));
+            });
+            document.querySelectorAll(".btn-delete").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    const crew = state.crew.find((item) => item.id === btn.dataset.id);
+                    if (!crew) return;
+                    if (!confirm(`Hapus data crew ${crew.name}?`)) return;
+                    if (IS_GAS) {
+                        await gasApi.deleteCrew(crew.id);
+                        await refreshFromServer();
+                    } else {
+                        state.crew = state.crew.filter((item) => item.id !== crew.id);
+                        saveState();
+                        rerenderAll();
                     }
+                });
+            });
+        }
+
+        function renderReportOptions() {
+            const select = document.getElementById("report-crew-id");
+            select.innerHTML = "";
+            state.crew
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .forEach((crew) => {
+                    const option = document.createElement("option");
+                    option.value = crew.id;
+                    option.textContent = `${crew.name} - ${crew.role} (${crew.ship})`;
+                    select.appendChild(option);
+                });
+        }
+
+        function renderTargetShipOptions() {
+            const select = document.getElementById("target-ship");
+            select.innerHTML = '<option value="">Pilih kapal tujuan</option>';
+            state.ships.forEach((ship) => {
+                const option = document.createElement("option");
+                option.value = ship;
+                option.textContent = ship;
+                select.appendChild(option);
+            });
+        }
+
+        function renderRoleShipOptions() {
+            const roleSelect = document.getElementById("crew-role");
+            const shipSelect = document.getElementById("crew-ship");
+            roleSelect.innerHTML = "";
+            shipSelect.innerHTML = "";
+            const roleSet = [...new Set([...ROLES, ...state.crew.map((c) => c.role)])].filter(Boolean);
+            roleSet.forEach((role) => {
+                const option = document.createElement("option");
+                option.value = role;
+                option.textContent = role;
+                roleSelect.appendChild(option);
+            });
+            state.ships.forEach((ship) => {
+                const option = document.createElement("option");
+                option.value = ship;
+                option.textContent = ship;
+                shipSelect.appendChild(option);
+            });
+        }
+
+        function syncShipsFromVessels() {
+            const vesselShips = state.vessels.map((v) => v.vessel_name).filter(Boolean);
+            const crewShips = state.crew.map((c) => c.ship).filter(Boolean);
+            const extraShips = loadShipsLocal();
+            state.ships = [...new Set([...vesselShips, ...crewShips, ...extraShips])];
+        }
+
+        function renderArmadaList() {
+            const container = document.getElementById("armada-list");
+            container.innerHTML = "";
+            if (!state.ships.length) {
+                container.innerHTML = '<p class="text-sm text-slate-500">Belum ada armada.</p>';
+                return;
+            }
+            state.ships.forEach((ship, index) => {
+                const crewCount = state.crew.filter((c) => c.ship === ship).length;
+                const item = document.createElement("div");
+                item.className = "rounded-md border border-slate-200 px-3 py-2 flex items-center justify-between";
+                item.innerHTML = `
+                    <div>
+                        <p class="text-sm font-semibold">${ship}</p>
+                        <p class="text-xs text-slate-500">${crewCount} crew</p>
+                    </div>
+                    <button class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold btn-edit-armada" data-index="${index}">Edit</button>
+                `;
+                container.appendChild(item);
+            });
+
+            document.querySelectorAll(".btn-edit-armada").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const index = Number(btn.dataset.index);
+                    document.getElementById("armada-index").value = String(index);
+                    document.getElementById("armada-name").value = state.ships[index];
+                    document.getElementById("armada-name").focus();
+                });
+            });
+        }
+
+        function renderVesselFormFields() {
+            const container = document.getElementById("vessel-form-fields");
+            if (!container) return;
+            container.innerHTML = "";
+            VESSEL_FIELDS.forEach((field) => {
+                const inputId = `vessel-${field.key}`;
+                const wrapper = document.createElement("div");
+                wrapper.innerHTML = `
+                    <label for="${inputId}" class="text-sm font-medium">${field.label}</label>
+                    <input id="${inputId}" type="text" class="w-full mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                `;
+                container.appendChild(wrapper);
+            });
+        }
+
+        function renderVessels() {
+            const tbody = document.getElementById("vessel-table-body");
+            if (!tbody) return;
+            tbody.innerHTML = "";
+            document.getElementById("vessel-count").textContent = `${state.vessels.length} data`;
+
+            if (!state.vessels.length) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = '<td colspan="7" class="px-4 py-6 text-center text-slate-500">Belum ada data armada.</td>';
+                tbody.appendChild(tr);
+                return;
+            }
+
+            state.vessels.forEach((vessel) => {
+                const photo = vessel.photo_url
+                    ? `<img src="${vessel.photo_url}" alt="Foto Armada" class="w-16 h-10 object-cover rounded border">`
+                    : "-";
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td class="px-4 py-3">${photo}</td>
+                    <td class="px-4 py-3">${vessel.vessel_name || "-"}</td>
+                    <td class="px-4 py-3">${vessel.imo_number || "-"}</td>
+                    <td class="px-4 py-3">${vessel.call_sign || "-"}</td>
+                    <td class="px-4 py-3">${vessel.mmsi || "-"}</td>
+                    <td class="px-4 py-3">${vessel.vessel_type || "-"}</td>
+                    <td class="px-4 py-3">
+                        <button class="text-blue-600 hover:text-blue-800 text-xs font-semibold mr-2 btn-edit-vessel" data-id="${vessel.id}">Edit</button>
+                        <button class="text-rose-600 hover:text-rose-800 text-xs font-semibold btn-delete-vessel" data-id="${vessel.id}">Hapus</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.querySelectorAll(".btn-edit-vessel").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const vessel = state.vessels.find((v) => v.id === btn.dataset.id);
+                    if (!vessel) return;
+                    document.getElementById("vessel-id").value = vessel.id;
+                    VESSEL_FIELDS.forEach((field) => {
+                        const input = document.getElementById(`vessel-${field.key}`);
+                        if (input) input.value = vessel[field.key] || "";
+                    });
+                    vesselPhotoBuffer = vessel.photo_url || "";
+                    renderVesselPhotoPreview();
+                });
+            });
+
+            document.querySelectorAll(".btn-delete-vessel").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    const vessel = state.vessels.find((v) => v.id === btn.dataset.id);
+                    if (!vessel) return;
+                    if (!confirm(`Hapus data armada ${vessel.vessel_name || "ini"}?`)) return;
+                    if (IS_GAS) {
+                        await gasApi.deleteVessel(vessel.id);
+                        await refreshFromServer();
+                    } else {
+                        state.vessels = state.vessels.filter((v) => v.id !== vessel.id);
+                        saveVesselsLocal(state.vessels);
+                        syncShipsFromVessels();
+                        saveState();
+                        rerenderAll();
+                    }
+                });
+            });
+        }
+
+        function getRoleGroup(role) {
+            const name = String(role || "").toLowerCase();
+            if (name.includes("nakhoda") || name.includes("nahkoda") || name.includes("mualim") || name.includes("juru mudi")) return "deck";
+            if (name.includes("kkm") || name.includes("k.k.m") || name.includes("masinis") || name.includes("oiler") || name.includes("juru minyak")) return "engine";
+            if (name.includes("koki") || name.includes("juru masak")) return "catering";
+            return "general";
+        }
+
+        function getRequiredCertIds(role) {
+            const base = new Set(["CERT001", "CERT002", "CERT003", "CERT004", "CERT008", "CERT010", "CERT013", "CERT014"]);
+            const group = getRoleGroup(role);
+            if (group === "deck") {
+                ["CERT005", "CERT006", "CERT007", "CERT011", "CERT012", "CERT017", "CERT018", "CERT020", "CERT021", "CERT023"].forEach((id) => base.add(id));
+            }
+            if (group === "engine") {
+                ["CERT005", "CERT006", "CERT022", "CERT026"].forEach((id) => base.add(id));
+            }
+            if (group !== "catering") {
+                ["CERT015", "CERT016", "CERT019"].forEach((id) => base.add(id));
+            }
+            return base;
+        }
+
+        function renderCrewCertificatesForm(role, certs) {
+            const container = document.getElementById("crew-certificates");
+            if (!container) return;
+            const required = getRequiredCertIds(role);
+            const groups = {};
+            CERT_MASTER.forEach((cert) => {
+                const category = cert.Category || "Other";
+                if (!groups[category]) groups[category] = [];
+                groups[category].push(cert);
+            });
+
+            container.innerHTML = "";
+            Object.keys(groups).forEach((category) => {
+                const block = document.createElement("div");
+                block.className = "border rounded-md p-3";
+                const rows = groups[category].map((cert) => {
+                    const id = cert.Cert_ID;
+                    const data = certs[id] || {};
+                    const checked = data.has || data.number || data.issueDate || data.expiryDate;
+                    const badge = required.has(id) ? "Wajib" : "Optional";
+                    return `
+                        <div class="grid grid-cols-1 md:grid-cols-5 gap-2 items-center py-2 border-b last:border-b-0">
+                            <label class="flex items-center gap-2 text-sm">
+                                <input type="checkbox" data-cert-id="${id}" data-field="has" ${checked ? "checked" : ""}>
+                                <span>${cert.Cert_Name}</span>
+                                <span class="text-xs text-slate-500">(${badge})</span>
+                            </label>
+                            <input type="text" data-cert-id="${id}" data-field="number" placeholder="No Sertifikat" class="w-full rounded border border-slate-300 px-2 py-1 text-xs" value="${data.number || ""}">
+                            <input type="date" data-cert-id="${id}" data-field="issueDate" class="w-full rounded border border-slate-300 px-2 py-1 text-xs" value="${data.issueDate || ""}">
+                            <input type="date" data-cert-id="${id}" data-field="expiryDate" class="w-full rounded border border-slate-300 px-2 py-1 text-xs" value="${data.expiryDate || ""}">
+                            <span class="text-xs text-slate-500">${cert.Category || "-"}</span>
+                        </div>
+                    `;
+                }).join("");
+                block.innerHTML = `<p class="text-xs font-semibold mb-2">${category}</p>${rows}`;
+                container.appendChild(block);
+            });
+        }
+
+        function collectCrewCertificates() {
+            const container = document.getElementById("crew-certificates");
+            if (!container) return {};
+            const certs = {};
+            container.querySelectorAll("[data-cert-id]").forEach((el) => {
+                const id = el.dataset.certId;
+                const field = el.dataset.field;
+                if (!certs[id]) certs[id] = { has: false, number: "", issueDate: "", expiryDate: "" };
+                if (field === "has") certs[id].has = el.checked;
+                if (field === "number") certs[id].number = el.value.trim();
+                if (field === "issueDate") certs[id].issueDate = el.value;
+                if (field === "expiryDate") certs[id].expiryDate = el.value;
+            });
+            Object.keys(certs).forEach((id) => {
+                const data = certs[id];
+                const hasAny = data.has || data.number || data.issueDate || data.expiryDate;
+                if (!hasAny) delete certs[id];
+            });
+            return certs;
+        }
+
+        function renderCertificateMonitoring() {
+            const tbody = document.getElementById("cert-table-body");
+            if (!tbody) return;
+            const shipFilter = document.getElementById("cert-filter-ship").value;
+            const roleFilter = document.getElementById("cert-filter-role").value;
+            const statusFilter = document.getElementById("cert-filter-status").value;
+            const showOptional = document.getElementById("cert-show-optional").checked;
+
+            const rows = [];
+            state.crew.forEach((crew) => {
+                if (shipFilter !== "All" && crew.ship !== shipFilter) return;
+                if (roleFilter !== "All" && crew.role !== roleFilter) return;
+                const requiredIds = getRequiredCertIds(crew.role);
+                CERT_MASTER.forEach((cert) => {
+                    const required = requiredIds.has(cert.Cert_ID);
+                    if (!showOptional && !required) return;
+                    const data = (crew.certificates || {})[cert.Cert_ID] || {};
+                    const hasData = data.has || data.number || data.issueDate || data.expiryDate;
+                    let status = hasData ? "Valid" : "Missing";
+                    if (data.expiryDate) {
+                        const diff = new Date(data.expiryDate) - new Date();
+                        if (diff < 0) status = "Expired";
+                    }
+                    if (statusFilter !== "All" && status !== statusFilter) return;
+                    rows.push({
+                        crewName: crew.name,
+                        role: crew.role,
+                        ship: crew.ship,
+                        certName: cert.Cert_Name,
+                        status,
+                        expiry: data.expiryDate ? fmtDateLong(data.expiryDate) : "-"
+                    });
+                });
+            });
+
+            document.getElementById("cert-table-count").textContent = `${rows.length} data`;
+            tbody.innerHTML = "";
+            if (!rows.length) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = '<td colspan="6" class="px-4 py-6 text-center text-slate-500">Data tidak ditemukan.</td>';
+                tbody.appendChild(tr);
+                return;
+            }
+            rows.forEach((row) => {
+                const cls = row.status === "Expired" ? "text-rose-700" : row.status === "Missing" ? "text-amber-700" : "text-emerald-700";
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td class="px-4 py-3">${row.crewName}</td>
+                    <td class="px-4 py-3">${row.role}</td>
+                    <td class="px-4 py-3">${row.ship}</td>
+                    <td class="px-4 py-3">${row.certName}</td>
+                    <td class="px-4 py-3"><span class="${cls} font-semibold">${row.status}</span></td>
+                    <td class="px-4 py-3">${row.expiry}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderCertificateFilters() {
+            const shipSelect = document.getElementById("cert-filter-ship");
+            const roleSelect = document.getElementById("cert-filter-role");
+            if (!shipSelect || !roleSelect) return;
+
+            shipSelect.innerHTML = '<option value="All">Semua Kapal</option>';
+            state.ships.forEach((ship) => {
+                const opt = document.createElement("option");
+                opt.value = ship;
+                opt.textContent = ship;
+                shipSelect.appendChild(opt);
+            });
+
+            roleSelect.innerHTML = '<option value="All">Semua Jabatan</option>';
+            const roleSet = [...new Set(state.crew.map((c) => c.role))].filter(Boolean);
+            roleSet.forEach((role) => {
+                const opt = document.createElement("option");
+                opt.value = role;
+                opt.textContent = role;
+                roleSelect.appendChild(opt);
+            });
+        }
+
+        function certExpiryStatus(expiryDate) {
+            if (!expiryDate) return "Missing";
+            const diff = new Date(expiryDate) - new Date();
+            if (diff < 0) return "Expired";
+            if (diff <= 1000 * 60 * 60 * 24 * 30) return "Warning";
+            return "Valid";
+        }
+
+        function renderRoleCertMonitoring() {
+            const tbody = document.getElementById("role-cert-table-body");
+            if (!tbody) return;
+            const stats = {};
+
+            state.crew.forEach((crew) => {
+                const role = crew.role || "Unknown";
+                if (!stats[role]) stats[role] = { total: 0, expired: 0, warning: 0, missing: 0 };
+                const required = getRequiredCertIds(role);
+                required.forEach((id) => {
+                    stats[role].total += 1;
+                    const data = (crew.certificates || {})[id];
+                    if (!data) {
+                        stats[role].missing += 1;
+                        return;
+                    }
+                    const status = certExpiryStatus(data.expiryDate);
+                    if (status === "Expired") stats[role].expired += 1;
+                    if (status === "Warning") stats[role].warning += 1;
+                    if (status === "Missing") stats[role].missing += 1;
+                });
+            });
+
+            const roles = Object.keys(stats).sort();
+            tbody.innerHTML = "";
+            if (!roles.length) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = '<td colspan="5" class="px-4 py-6 text-center text-slate-500">Belum ada data.</td>';
+                tbody.appendChild(tr);
+                return;
+            }
+            roles.forEach((role) => {
+                const row = stats[role];
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td class="px-4 py-3">${role}</td>
+                    <td class="px-4 py-3">${row.total}</td>
+                    <td class="px-4 py-3 text-rose-700 font-semibold">${row.expired}</td>
+                    <td class="px-4 py-3 text-amber-700 font-semibold">${row.warning}</td>
+                    <td class="px-4 py-3 text-slate-700 font-semibold">${row.missing}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderReportsTable() {
+            const tbody = document.getElementById("report-table-body");
+            tbody.innerHTML = "";
+            const data = state.reports.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            if (data.length === 0) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = '<td colspan="5" class="px-4 py-6 text-center text-slate-500">Belum ada laporan.</td>';
+                tbody.appendChild(tr);
+                return;
+            }
+
+            data.forEach((report) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td class="px-4 py-3">${new Date(report.timestamp).toLocaleString("id-ID")}</td>
+                    <td class="px-4 py-3">${report.crewName}</td>
+                    <td class="px-4 py-3">${report.type}</td>
+                    <td class="px-4 py-3">${report.ship}</td>
+                    <td class="px-4 py-3">${report.notes || "-"}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function rerenderAll() {
+            syncShipsFromVessels();
+            renderKPIs();
+            renderCharts();
+            renderRoleShipOptions();
+            renderArmadaList();
+            renderShipCards();
+            renderCrewTable();
+            renderReportOptions();
+            renderTargetShipOptions();
+            renderReportsTable();
+            renderVesselFormFields();
+            renderVessels();
+            renderCertificateFilters();
+            renderCertificateMonitoring();
+            renderRoleCertMonitoring();
+            renderVesselPhotoPreview();
+        }
+
+        function toggleReportFields() {
+            const type = document.getElementById("report-type").value;
+            const targetShip = document.getElementById("group-target-ship");
+            const certDate = document.getElementById("group-cert-date");
+            targetShip.classList.toggle("hidden", type !== "Mutasi");
+            certDate.classList.toggle("hidden", type !== "Update Sertifikat");
+        }
+
+        function readFileAsDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result || ""));
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function uploadToDriveOrLocal(file) {
+            const dataUrl = await readFileAsDataUrl(file);
+            if (!IS_GAS) return dataUrl;
+            const base64 = dataUrl.split(",")[1] || "";
+            const result = await gasApi.uploadFile({
+                name: file.name,
+                mimeType: file.type || "application/octet-stream",
+                base64
+            });
+            return result && result.url ? result.url : dataUrl;
+        }
+
+        function renderModalMedia(readOnly) {
+            const preview = document.getElementById("crew-photo-preview");
+            const clearPhotoBtn = document.getElementById("btn-clear-photo");
+            const docsList = document.getElementById("crew-documents-list");
+
+            if (modalPhotoBuffer) {
+                preview.src = modalPhotoBuffer;
+                preview.classList.remove("hidden");
+                clearPhotoBtn.classList.toggle("hidden", readOnly);
+            } else {
+                preview.src = "";
+                preview.classList.add("hidden");
+                clearPhotoBtn.classList.add("hidden");
+            }
+
+            docsList.innerHTML = "";
+            if (!modalDocumentsBuffer.length) {
+                docsList.innerHTML = '<p class="text-slate-500">Belum ada dokumen.</p>';
+                return;
+            }
+
+            modalDocumentsBuffer.forEach((doc, index) => {
+                const row = document.createElement("div");
+                row.className = "flex items-center justify-between gap-2 border rounded px-2 py-1";
+                const safeName = doc.name || `Dokumen ${index + 1}`;
+                const action = readOnly
+                    ? `<a class="text-indigo-600 hover:text-indigo-800" href="${doc.dataUrl}" download="${safeName}">Download</a>`
+                    : `<button type="button" class="text-rose-600 hover:text-rose-800 btn-remove-doc" data-idx="${index}">Hapus</button>`;
+                row.innerHTML = `<span class="truncate">${safeName}</span>${action}`;
+                docsList.appendChild(row);
+            });
+
+            if (!readOnly) {
+                docsList.querySelectorAll(".btn-remove-doc").forEach((btn) => {
+                    btn.addEventListener("click", () => {
+                        const idx = Number(btn.dataset.idx);
+                        modalDocumentsBuffer.splice(idx, 1);
+                        renderModalMedia(false);
+                    });
+                });
+            }
+        }
+
+        function renderVesselPhotoPreview() {
+            const preview = document.getElementById("vessel-photo-preview");
+            const clearBtn = document.getElementById("btn-clear-vessel-photo");
+            if (!preview || !clearBtn) return;
+            if (vesselPhotoBuffer) {
+                preview.src = vesselPhotoBuffer;
+                preview.classList.remove("hidden");
+                clearBtn.classList.remove("hidden");
+            } else {
+                preview.src = "";
+                preview.classList.add("hidden");
+                clearBtn.classList.add("hidden");
+            }
+        }
+
+        function setCrewFormReadOnly(isReadOnly) {
+            const form = document.getElementById("crew-form");
+            form.querySelectorAll("input, select, textarea").forEach((el) => {
+                if (el.id !== "crew-id") el.disabled = isReadOnly;
+            });
+            form.querySelector('button[type="submit"]').classList.toggle("hidden", isReadOnly);
+            renderModalMedia(isReadOnly);
+        }
+
+        function openCrewModal(id = "", readOnly = false) {
+            const modal = document.getElementById("crew-modal");
+            modal.classList.remove("hidden");
+            document.body.classList.add("modal-open");
+
+            const title = document.getElementById("crew-modal-title");
+            const crew = state.crew.find((c) => c.id === id);
+
+            if (crew) {
+                title.textContent = readOnly ? "Detail Crew" : "Edit Crew";
+                document.getElementById("crew-id").value = crew.id;
+                document.getElementById("crew-name").value = crew.name || "";
+                document.getElementById("crew-call-name").value = crew.callName || "";
+                document.getElementById("crew-gender").value = crew.gender || "";
+                document.getElementById("crew-birth-date").value = crew.birthDate || "";
+                document.getElementById("crew-birth-place").value = crew.birthPlace || "";
+                document.getElementById("crew-religion").value = crew.religion || "";
+                document.getElementById("crew-nationality").value = crew.nationality || "";
+                document.getElementById("crew-phone").value = crew.phone || "";
+                document.getElementById("crew-phone-home").value = crew.homePhone || "";
+                document.getElementById("crew-email").value = crew.email || "";
+                document.getElementById("crew-address").value = crew.address || "";
+                document.getElementById("crew-postal-code").value = crew.postalCode || "";
+                document.getElementById("crew-role").value = crew.role || "";
+                document.getElementById("crew-ship").value = crew.ship || "";
+                document.getElementById("crew-status").value = crew.status || "Onboard";
+                document.getElementById("crew-cert-expiry").value = crew.certExpiry || "";
+                document.getElementById("crew-sign-on").value = crew.signOn || "";
+                document.getElementById("crew-sign-off").value = crew.signOff || "";
+                document.getElementById("crew-seaman-book").value = crew.seamanBook || "";
+                document.getElementById("crew-seaman-book-issued").value = crew.seamanBookIssued || "";
+                document.getElementById("crew-seaman-book-expiry").value = crew.seamanBookExpiry || "";
+                document.getElementById("crew-passport").value = crew.passport || "";
+                document.getElementById("crew-passport-issued").value = crew.passportIssued || "";
+                document.getElementById("crew-passport-expiry").value = crew.passportExpiry || "";
+                document.getElementById("crew-id-number").value = crew.idNumber || "";
+                document.getElementById("crew-id-issued").value = crew.idIssued || "";
+                document.getElementById("crew-family-card-number").value = crew.familyCardNumber || "";
+                document.getElementById("crew-seafarer-code").value = crew.seafarerCode || "";
+                document.getElementById("crew-ijazah").value = crew.ijazah || "";
+                document.getElementById("crew-certificate-no").value = crew.certificateNo || "";
+                document.getElementById("crew-medical-cert").value = crew.medicalCert || "";
+                document.getElementById("crew-competency-cert").value = crew.competencyCert || "";
+                document.getElementById("crew-last-medical").value = crew.lastMedicalDate || "";
+                document.getElementById("crew-emergency-name").value = crew.emergencyName || "";
+                document.getElementById("crew-emergency-relation").value = crew.emergencyRelation || "";
+                document.getElementById("crew-emergency-address").value = crew.emergencyAddress || "";
+                document.getElementById("crew-emergency-home-phone").value = crew.emergencyHomePhone || "";
+                document.getElementById("crew-emergency-phone").value = crew.emergencyPhone || "";
+                document.getElementById("crew-marital-status").value = crew.maritalStatus || "";
+                document.getElementById("crew-spouse-name").value = crew.spouseName || "";
+                document.getElementById("crew-spouse-gender").value = crew.spouseGender || "";
+                document.getElementById("crew-spouse-age").value = crew.spouseAge || "";
+                document.getElementById("crew-children").value = crew.childrenData || "";
+                document.getElementById("crew-bank-name").value = crew.bankName || "";
+                document.getElementById("crew-bank-account").value = crew.bankAccount || "";
+                document.getElementById("crew-bank-account-holder").value = crew.bankAccountHolder || "";
+                document.getElementById("crew-doc-checklist").value = crew.docChecklist || "";
+                document.getElementById("crew-doc-notes").value = crew.docNotes || "";
+                modalPhotoBuffer = crew.photoDataUrl || "";
+                modalDocumentsBuffer = Array.isArray(crew.documents) ? [...crew.documents] : [];
+                renderCrewCertificatesForm(crew.role, crew.certificates || {});
+            } else {
+                title.textContent = "Tambah Crew";
+                document.getElementById("crew-form").reset();
+                document.getElementById("crew-id").value = "";
+                document.getElementById("crew-cert-expiry").value = toDateInputValue(addDays(new Date(), 180));
+                document.getElementById("crew-nationality").value = "Indonesia";
+                document.getElementById("crew-gender").value = "M";
+                modalPhotoBuffer = "";
+                modalDocumentsBuffer = [];
+                renderCrewCertificatesForm(document.getElementById("crew-role").value, {});
+            }
+
+            document.getElementById("crew-photo").value = "";
+            document.getElementById("crew-documents").value = "";
+            setCrewFormReadOnly(readOnly);
+        }
+
+        function closeCrewModal() {
+            document.getElementById("crew-modal").classList.add("hidden");
+            document.body.classList.remove("modal-open");
+            setCrewFormReadOnly(false);
+            modalPhotoBuffer = "";
+            modalDocumentsBuffer = [];
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function detailItem(label, value) {
+            const display = String(value || "-").trim() || "-";
+            return `<div class="crew-detail-item"><b>${escapeHtml(label)}</b><span>${escapeHtml(display)}</span></div>`;
+        }
+
+        function openCrewDetail(id) {
+            const crew = state.crew.find((item) => item.id === id);
+            if (!crew) return;
+
+            const photo = crew.photoDataUrl
+                ? `<img src="${crew.photoDataUrl}" alt="Foto Crew" class="w-28 h-36 object-cover border rounded">`
+                : '<span class="text-slate-500 text-sm">-</span>';
+
+            const docs = Array.isArray(crew.documents) && crew.documents.length
+                ? crew.documents.map((doc, idx) => `<a class="block text-indigo-600 hover:text-indigo-800 underline text-xs" href="${doc.dataUrl}" download="${escapeHtml(doc.name || `dokumen-${idx + 1}`)}">${escapeHtml(doc.name || `Dokumen ${idx + 1}`)}</a>`).join("")
+                : '<span class="text-slate-500 text-sm">-</span>';
+
+            document.getElementById("crew-detail-grid").innerHTML = `
+                <div class="crew-detail-card">
+                    <h5>Data Crew</h5>
+                    <div class="crew-detail-item"><b>Foto</b><span>${photo}</span></div>
+                    ${detailItem("Nama Lengkap", crew.name)}
+                    ${detailItem("Nama Panggilan", crew.callName)}
+                    ${detailItem("Jabatan", crew.role)}
+                    ${detailItem("Kapal", crew.ship)}
+                    ${detailItem("Status", crew.status)}
+                    ${detailItem("Jenis Kelamin", crew.gender)}
+                    ${detailItem("Tempat Lahir", crew.birthPlace)}
+                    ${detailItem("Tanggal Lahir", fmtDateLong(crew.birthDate))}
+                    ${detailItem("Agama", crew.religion)}
+                    ${detailItem("Kebangsaan", crew.nationality)}
+                    ${detailItem("Tempat Tinggal", crew.address)}
+                    ${detailItem("Kode Pos", crew.postalCode)}
+                    ${detailItem("No Handphone", crew.phone)}
+                    ${detailItem("No Telp Rumah", crew.homePhone)}
+                    ${detailItem("Email", crew.email)}
+                </div>
+                <div class="crew-detail-card">
+                    <h5>Travel Document</h5>
+                    ${detailItem("Nomor KTP", crew.idNumber)}
+                    ${detailItem("Keluaran (ID) KTP", crew.idIssued)}
+                    ${detailItem("Nomor Kartu Keluarga", crew.familyCardNumber)}
+                    ${detailItem("Nomor Passport", crew.passport)}
+                    ${detailItem("Keluaran Passport", crew.passportIssued)}
+                    ${detailItem("Masa Berlaku Passport", fmtDateLong(crew.passportExpiry))}
+                    ${detailItem("Nomor Buku Pelaut", crew.seamanBook)}
+                    ${detailItem("Keluaran Buku Pelaut", crew.seamanBookIssued)}
+                    ${detailItem("Masa Berlaku Buku Pelaut", fmtDateLong(crew.seamanBookExpiry))}
+                    ${detailItem("Kode Pelaut", crew.seafarerCode)}
+                    ${detailItem("Sign On", crew.signOn)}
+                    ${detailItem("Sign Off", crew.signOff)}
+                </div>
+                <div class="crew-detail-card">
+                    <h5>Sertifikat</h5>
+                    ${detailItem("Sertifikat / Ijasah", crew.ijazah)}
+                    ${detailItem("No Sertifikat", crew.certificateNo)}
+                    ${detailItem("No Sertifikat Medical", crew.medicalCert)}
+                    ${detailItem("No Sertifikat Kompetensi", crew.competencyCert)}
+                    ${detailItem("Medical Terakhir", fmtDateLong(crew.lastMedicalDate))}
+                    ${detailItem("Masa Berlaku Sertifikat", fmtDateLong(crew.certExpiry))}
+                    ${detailItem("Jumlah Sertifikat", Object.keys(crew.certificates || {}).length)}
+                </div>
+                <div class="crew-detail-card">
+                    <h5>Status Keluarga</h5>
+                    ${detailItem("Status", crew.maritalStatus)}
+                    ${detailItem("Nama Istri/Suami", crew.spouseName)}
+                    ${detailItem("Jenis Kelamin Istri/Suami", crew.spouseGender)}
+                    ${detailItem("Umur Istri/Suami", crew.spouseAge)}
+                    ${detailItem("Data Anak", crew.childrenData)}
+                </div>
+                <div class="crew-detail-card">
+                    <h5>Panggilan Darurat / Next of Kin</h5>
+                    ${detailItem("Nama Keluarga", crew.emergencyName)}
+                    ${detailItem("Hubungan", crew.emergencyRelation)}
+                    ${detailItem("Tempat Tinggal", crew.emergencyAddress)}
+                    ${detailItem("No Telp Rumah", crew.emergencyHomePhone)}
+                    ${detailItem("No Handphone", crew.emergencyPhone)}
+                </div>
+                <div class="crew-detail-card">
+                    <h5>Delegasi Gaji & Dokumen</h5>
+                    ${detailItem("Nama Bank", crew.bankName)}
+                    ${detailItem("Nomor Rekening", crew.bankAccount)}
+                    ${detailItem("Atas Nama Rekening", crew.bankAccountHolder)}
+                    ${detailItem("Checklist Dokumen", crew.docChecklist)}
+                    ${detailItem("Catatan Dokumen", crew.docNotes)}
+                    <div class="crew-detail-item"><b>Dokumen Upload</b><span>${docs}</span></div>
+                </div>
+            `;
+
+            document.getElementById("crew-detail-modal").classList.remove("hidden");
+            document.body.classList.add("modal-open");
+        }
+
+        function closeCrewDetailModal() {
+            document.getElementById("crew-detail-modal").classList.add("hidden");
+            document.body.classList.remove("modal-open");
+        }
+
+        function nextCrewId() {
+            let max = 0;
+            state.crew.forEach((c) => {
+                const n = Number(c.id.replace("C", ""));
+                if (n > max) max = n;
+            });
+            return `C${String(max + 1).padStart(3, "0")}`;
+        }
+
+        function nextVesselId() {
+            let max = 0;
+            state.vessels.forEach((v) => {
+                const n = Number(String(v.id || "").replace("V", ""));
+                if (n > max) max = n;
+            });
+            return `V${String(max + 1).padStart(3, "0")}`;
+        }
+        function exportCsv(filename, rows) {
+            if (!rows.length) {
+                alert("Tidak ada data untuk diexport.");
+                return;
+            }
+            const headers = Object.keys(rows[0]);
+            const csv = [
+                headers.join(","),
+                ...rows.map((row) =>
+                    headers.map((h) => `"${String(row[h] ?? "").replace(/"/g, '""')}"`).join(",")
+                )
+            ].join("\n");
+
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function normalizeHeader(value) {
+            return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        }
+
+        function extractField(row, aliases) {
+            const normalized = {};
+            Object.keys(row || {}).forEach((key) => {
+                normalized[normalizeHeader(key)] = row[key];
+            });
+            for (const alias of aliases) {
+                const key = normalizeHeader(alias);
+                if (key in normalized) {
+                    const raw = normalized[key];
+                    if (raw !== null && raw !== undefined && String(raw).trim() !== "") return raw;
+                }
+            }
+            return "";
+        }
+
+        async function importCrewFromExcel(file) {
+            if (!file) return;
+            if (typeof XLSX === "undefined") {
+                alert("Library Excel belum termuat. Coba reload halaman.");
+                return;
+            }
+
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: "array" });
+            const sheetName = workbook.SheetNames[0];
+            if (!sheetName) {
+                alert("Sheet tidak ditemukan.");
+                return;
+            }
+
+            const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+            if (!rows.length) {
+                alert("Data Excel kosong.");
+                return;
+            }
+
+            if (IS_GAS) {
+                if (!confirm(`Import ${rows.length} crew dari Excel dan ganti daftar crew saat ini?`)) return;
+                await gasApi.importCrewList(rows);
+                await refreshFromServer();
+                alert(`Import selesai: ${rows.length} crew.`);
+                return;
+            }
+
+            const today = new Date();
+            const imported = rows
+                .map((row) => {
+                    const name = String(extractField(row, ["nama", "nama crew", "nama lengkap", "name", "Name"])).trim();
+                    if (!name) return null;
+
+                    const genderRaw = String(extractField(row, ["kelamin", "jenis kelamin", "gender", "sex"])).trim().toUpperCase();
+                    let gender = "";
+                    if (genderRaw.startsWith("L") || genderRaw === "M") gender = "M";
+                    if (genderRaw.startsWith("P") || genderRaw === "F") gender = "F";
+
+                    const certExpiry = parseDateValue(extractField(row, ["expired", "masa berlaku", "cert expiry", "sertifikat expired", "Expired"])) ||
+                        toDateInputValue(addDays(today, 180));
+                    const certName = String(extractField(row, ["certificate", "sertifikat", "ijazah", "Certificate"])).trim();
+                    const certNumber = String(extractField(row, ["certificate_number", "no sertifikat", "nomor sertifikat", "cert no", "Certificate_Number"])).trim();
+                    const certificates = {};
+                    if (certName || certNumber || certExpiry) {
+                        certificates.CERT005 = {
+                            has: true,
+                            number: certNumber,
+                            issueDate: "",
+                            expiryDate: certExpiry
+                        };
+                    }
+
+                    return {
+                        name,
+                        callName: String(extractField(row, ["nama panggilan", "panggilan"])).trim(),
+                        role: String(extractField(row, ["jabatan", "position", "rank", "posisi", "Rank"])).trim() || "Crew",
+                        ship: String(extractField(row, ["kapal", "nama kapal", "armada", "vessel", "vessel_id", "vessel id"])).trim() || "UNASSIGNED",
+                        status: String(extractField(row, ["status"])).trim() || "Onboard",
+                        gender,
+                        birthDate: parseDateValue(extractField(row, ["tgl lahir", "tanggal lahir", "dob", "date of birth", "Date_Of_Birth"])),
+                        birthPlace: String(extractField(row, ["tempat lahir", "place of birth"])).trim(),
+                        nationality: String(extractField(row, ["kebangsaan", "nationality", "warganegara", "kewarganegaraan", "Nationality"])).trim() || "Indonesia",
+                        seafarerCode: String(extractField(row, ["kode pelaut", "seafarer code", "Seafarer_Code"])).trim(),
+                        seamanBook: String(extractField(row, ["no buku", "nomor buku", "no buku pelaut", "buku pelaut", "Number_Of_Seafarer_Book"])).trim(),
+                        passport: String(extractField(row, ["nomor passport", "no passport", "passport"])).trim(),
+                        idNumber: String(extractField(row, ["nomor ktp", "no ktp", "ktp", "id number"])).trim(),
+                        certExpiry,
+                        ijazah: certName,
+                        certificateNo: String(extractField(row, ["no sertifikat", "nomor sertifikat", "certificate no", "cert no"])).trim(),
+                        signOn: String(extractField(row, ["sign on", "tgl sign on", "tanggal sign on"])).trim(),
+                        signOff: String(extractField(row, ["sign off", "tgl sign off", "tanggal sign off"])).trim(),
+                        phone: String(extractField(row, ["no handphone", "nomer handphone", "phone", "hp", "Phone_Number"])).trim(),
+                        email: String(extractField(row, ["email", "e-mail", "Email_Address"])).trim(),
+                        address: String(extractField(row, ["alamat", "tempat tinggal"])).trim(),
+                        certificates
+                    };
+                })
+                .filter(Boolean);
+
+            if (!imported.length) {
+                alert("Tidak ada baris crew valid untuk diimport.");
+                return;
+            }
+
+            if (!confirm(`Import ${imported.length} crew dari Excel dan ganti daftar crew saat ini?`)) return;
+
+            state.crew = imported.map((item, idx) => ({
+                id: `C${String(idx + 1).padStart(3, "0")}`,
+                ...defaultCrewDocs(idx + 1),
+                ...item
+            }));
+            state.ships = [...new Set(state.crew.map((c) => c.ship).filter(Boolean))];
+            state.reports = [];
+            state.filterShip = "All";
+            saveState();
+            rerenderAll();
+            alert(`Import selesai: ${imported.length} crew.`);
+        }
+
+        function bindEvents() {
+            document.querySelectorAll(".nav-btn").forEach((btn) => {
+                btn.addEventListener("click", () => showPage(btn.dataset.page));
+            });
+
+            document.getElementById("btn-share-page").addEventListener("click", async () => {
+                const shareUrl = window.location.href;
+                try {
+                    if (navigator.share) {
+                        await navigator.share({ title: "Crew Manager", text: "Halaman web app Crew Manager", url: shareUrl });
+                    } else if (navigator.clipboard) {
+                        await navigator.clipboard.writeText(shareUrl);
+                        alert("Link halaman berhasil disalin.");
+                    } else {
+                        prompt("Salin link halaman ini:", shareUrl);
+                    }
+                } catch (_error) {
+                    // User canceled share dialog.
                 }
             });
 
-            // 2. Doughnut Chart: Issues
-            const ctxIssue = document.getElementById('issueChart').getContext('2d');
-            new Chart(ctxIssue, {
-                type: 'doughnut',
-                data: {
-                    labels: fleetData.map(s => s.name.replace('LCT ', '')),
-                    datasets: [{
-                        data: fleetData.map(s => s.issues),
-                        backgroundColor: [
-                            '#60a5fa', // blue-400
-                            '#34d399', // emerald-400
-                            '#fbbf24', // amber-400
-                            '#f87171'  // red-400
-                        ],
-                        borderWidth: 2,
-                        hoverOffset: 4
-                    }]
-                },
-                options: commonOptions
+            document.getElementById("search-crew").addEventListener("input", renderCrewTable);
+            document.getElementById("status-filter").addEventListener("change", renderCrewTable);
+            document.getElementById("report-type").addEventListener("change", toggleReportFields);
+            document.getElementById("crew-role").addEventListener("change", () => {
+                renderCrewCertificatesForm(document.getElementById("crew-role").value, collectCrewCertificates());
+            });
+            document.getElementById("cert-filter-ship").addEventListener("change", renderCertificateMonitoring);
+            document.getElementById("cert-filter-role").addEventListener("change", renderCertificateMonitoring);
+            document.getElementById("cert-filter-status").addEventListener("change", renderCertificateMonitoring);
+            document.getElementById("cert-show-optional").addEventListener("change", renderCertificateMonitoring);
+
+            document.getElementById("crew-photo").addEventListener("change", async (event) => {
+                const file = event.target.files && event.target.files[0];
+                if (!file) return;
+                modalPhotoBuffer = await uploadToDriveOrLocal(file);
+                renderModalMedia(false);
+                event.target.value = "";
+            });
+
+            document.getElementById("btn-clear-photo").addEventListener("click", () => {
+                modalPhotoBuffer = "";
+                renderModalMedia(false);
+            });
+
+            document.getElementById("crew-documents").addEventListener("change", async (event) => {
+                const files = Array.from(event.target.files || []);
+                for (const file of files) {
+                    const dataUrl = await uploadToDriveOrLocal(file);
+                    modalDocumentsBuffer.push({ name: file.name, type: file.type || "application/octet-stream", dataUrl });
+                }
+                renderModalMedia(false);
+                event.target.value = "";
+            });
+
+            document.getElementById("vessel-photo").addEventListener("change", async (event) => {
+                const file = event.target.files && event.target.files[0];
+                if (!file) return;
+                vesselPhotoBuffer = await uploadToDriveOrLocal(file);
+                renderVesselPhotoPreview();
+                event.target.value = "";
+            });
+
+            document.getElementById("btn-clear-vessel-photo").addEventListener("click", () => {
+                vesselPhotoBuffer = "";
+                renderVesselPhotoPreview();
+            });
+
+            document.getElementById("report-form").addEventListener("submit", async (event) => {
+                event.preventDefault();
+                const crewId = document.getElementById("report-crew-id").value;
+                const type = document.getElementById("report-type").value;
+                const targetShip = document.getElementById("target-ship").value;
+                const certDate = document.getElementById("new-cert-date").value;
+                const notes = document.getElementById("report-notes").value.trim();
+
+                const crew = state.crew.find((c) => c.id === crewId);
+                if (!crew) return;
+
+                if (type === "Mutasi") {
+                    if (!targetShip) {
+                        alert("Pilih kapal tujuan untuk mutasi.");
+                        return;
+                    }
+                    crew.ship = targetShip;
+                } else if (type === "Update Sertifikat") {
+                    if (!certDate) {
+                        alert("Isi tanggal sertifikat baru.");
+                        return;
+                    }
+                    crew.certExpiry = certDate;
+                } else if (type === "Cuti Tahunan") {
+                    crew.status = "Cuti";
+                } else if (type === "Laporan Sakit") {
+                    crew.status = "Sakit";
+                } else if (type === "Kembali Bertugas") {
+                    crew.status = "Onboard";
+                }
+
+                const report = {
+                    id: `R${Date.now()}`,
+                    timestamp: new Date().toISOString(),
+                    crewId: crew.id,
+                    crewName: crew.name,
+                    ship: crew.ship,
+                    type,
+                    notes
+                };
+
+                if (IS_GAS) {
+                    await gasApi.saveCrew(crew);
+                    await gasApi.saveReport(report);
+                    await refreshFromServer();
+                } else {
+                    state.reports.push(report);
+                    saveState();
+                    rerenderAll();
+                }
+
+                document.getElementById("report-form").reset();
+                toggleReportFields();
+                alert("Laporan berhasil disimpan.");
+            });
+
+            document.getElementById("crew-form").addEventListener("submit", async (event) => {
+                event.preventDefault();
+                const id = document.getElementById("crew-id").value;
+                const payload = {
+                    name: document.getElementById("crew-name").value.trim(),
+                    callName: document.getElementById("crew-call-name").value.trim(),
+                    gender: document.getElementById("crew-gender").value,
+                    birthDate: document.getElementById("crew-birth-date").value,
+                    birthPlace: document.getElementById("crew-birth-place").value.trim(),
+                    religion: document.getElementById("crew-religion").value.trim(),
+                    nationality: document.getElementById("crew-nationality").value.trim(),
+                    phone: document.getElementById("crew-phone").value.trim(),
+                    homePhone: document.getElementById("crew-phone-home").value.trim(),
+                    email: document.getElementById("crew-email").value.trim(),
+                    address: document.getElementById("crew-address").value.trim(),
+                    postalCode: document.getElementById("crew-postal-code").value.trim(),
+                    role: document.getElementById("crew-role").value,
+                    ship: document.getElementById("crew-ship").value,
+                    status: document.getElementById("crew-status").value,
+                    certExpiry: document.getElementById("crew-cert-expiry").value,
+                    signOn: document.getElementById("crew-sign-on").value.trim(),
+                    signOff: document.getElementById("crew-sign-off").value.trim(),
+                    seamanBook: document.getElementById("crew-seaman-book").value.trim(),
+                    seamanBookIssued: document.getElementById("crew-seaman-book-issued").value.trim(),
+                    seamanBookExpiry: document.getElementById("crew-seaman-book-expiry").value,
+                    passport: document.getElementById("crew-passport").value.trim(),
+                    passportIssued: document.getElementById("crew-passport-issued").value.trim(),
+                    passportExpiry: document.getElementById("crew-passport-expiry").value,
+                    idNumber: document.getElementById("crew-id-number").value.trim(),
+                    idIssued: document.getElementById("crew-id-issued").value.trim(),
+                    familyCardNumber: document.getElementById("crew-family-card-number").value.trim(),
+                    seafarerCode: document.getElementById("crew-seafarer-code").value.trim(),
+                    ijazah: document.getElementById("crew-ijazah").value.trim(),
+                    certificateNo: document.getElementById("crew-certificate-no").value.trim(),
+                    medicalCert: document.getElementById("crew-medical-cert").value.trim(),
+                    competencyCert: document.getElementById("crew-competency-cert").value.trim(),
+                    lastMedicalDate: document.getElementById("crew-last-medical").value,
+                    emergencyName: document.getElementById("crew-emergency-name").value.trim(),
+                    emergencyRelation: document.getElementById("crew-emergency-relation").value.trim(),
+                    emergencyAddress: document.getElementById("crew-emergency-address").value.trim(),
+                    emergencyHomePhone: document.getElementById("crew-emergency-home-phone").value.trim(),
+                    emergencyPhone: document.getElementById("crew-emergency-phone").value.trim(),
+                    maritalStatus: document.getElementById("crew-marital-status").value,
+                    spouseName: document.getElementById("crew-spouse-name").value.trim(),
+                    spouseGender: document.getElementById("crew-spouse-gender").value.trim(),
+                    spouseAge: document.getElementById("crew-spouse-age").value.trim(),
+                    childrenData: document.getElementById("crew-children").value.trim(),
+                    bankName: document.getElementById("crew-bank-name").value.trim(),
+                    bankAccount: document.getElementById("crew-bank-account").value.trim(),
+                    bankAccountHolder: document.getElementById("crew-bank-account-holder").value.trim(),
+                    docChecklist: document.getElementById("crew-doc-checklist").value.trim(),
+                    docNotes: document.getElementById("crew-doc-notes").value.trim(),
+                    photoDataUrl: modalPhotoBuffer,
+                    documents: modalDocumentsBuffer,
+                    certificates: collectCrewCertificates()
+                };
+
+                if (!payload.name || !payload.certExpiry) {
+                    alert("Nama dan masa berlaku sertifikat wajib diisi.");
+                    return;
+                }
+
+                if (IS_GAS) {
+                    payload.id = id || "";
+                    await gasApi.saveCrew(payload);
+                    closeCrewModal();
+                    await refreshFromServer();
+                    return;
+                }
+
+                if (id) {
+                    const crew = state.crew.find((c) => c.id === id);
+                    if (crew) Object.assign(crew, payload);
+                } else {
+                    state.crew.push({ id: nextCrewId(), ...defaultCrewDocs(state.crew.length + 1), ...payload });
+                }
+
+                saveState();
+                rerenderAll();
+                closeCrewModal();
+            });
+
+            document.getElementById("btn-add-crew").addEventListener("click", () => openCrewModal());
+            document.getElementById("btn-close-modal").addEventListener("click", closeCrewModal);
+            document.getElementById("btn-cancel-modal").addEventListener("click", closeCrewModal);
+            document.getElementById("crew-modal").addEventListener("click", (event) => {
+                if (event.target.id === "crew-modal") closeCrewModal();
+            });
+            document.getElementById("btn-close-detail-modal").addEventListener("click", closeCrewDetailModal);
+            document.getElementById("crew-detail-modal").addEventListener("click", (event) => {
+                if (event.target.id === "crew-detail-modal") closeCrewDetailModal();
+            });
+            document.getElementById("btn-import-crew").addEventListener("click", () => {
+                document.getElementById("input-import-crew").click();
+            });
+            document.getElementById("input-import-crew").addEventListener("change", async (event) => {
+                const file = event.target.files && event.target.files[0];
+                if (!file) return;
+                await importCrewFromExcel(file);
+                event.target.value = "";
+            });
+
+            document.getElementById("btn-export-crew").addEventListener("click", () => {
+                exportCsv("data-crew.csv", state.crew.map((c) => ({
+                    id: c.id,
+                    nama: c.name,
+                    nama_panggilan: c.callName || "",
+                    jabatan: c.role,
+                    kapal: c.ship,
+                    status: c.status,
+                    kelamin: c.gender || "",
+                    sign_on: c.signOn || "",
+                    sign_off: c.signOff || "",
+                    tanggal_lahir: c.birthDate || "",
+                    tempat_lahir: c.birthPlace || "",
+                    agama: c.religion || "",
+                    kewarganegaraan: c.nationality || "",
+                    telepon: c.phone || "",
+                    telepon_rumah: c.homePhone || "",
+                    email: c.email || "",
+                    alamat: c.address || "",
+                    kode_pos: c.postalCode || "",
+                    masa_berlaku_sertifikat: c.certExpiry,
+                    no_ktp: c.idNumber || "",
+                    keluaran_ktp: c.idIssued || "",
+                    no_kartu_keluarga: c.familyCardNumber || "",
+                    no_buku_pelaut: c.seamanBook || "",
+                    keluaran_buku_pelaut: c.seamanBookIssued || "",
+                    masa_berlaku_buku_pelaut: c.seamanBookExpiry || "",
+                    no_passport: c.passport || "",
+                    keluaran_passport: c.passportIssued || "",
+                    masa_berlaku_passport: c.passportExpiry || "",
+                    seafarer_code: c.seafarerCode || "",
+                    ijasah: c.ijazah || "",
+                    no_sertifikat: c.certificateNo || "",
+                    no_sertifikat_medical: c.medicalCert || "",
+                    no_sertifikat_kompetensi: c.competencyCert || "",
+                    tanggal_medical_terakhir: c.lastMedicalDate || "",
+                    status_keluarga: c.maritalStatus || "",
+                    nama_istri_suami: c.spouseName || "",
+                    jenis_kelamin_istri_suami: c.spouseGender || "",
+                    umur_istri_suami: c.spouseAge || "",
+                    data_anak: c.childrenData || "",
+                    emergency_contact: c.emergencyName || "",
+                    emergency_relation: c.emergencyRelation || "",
+                    emergency_address: c.emergencyAddress || "",
+                    emergency_home_phone: c.emergencyHomePhone || "",
+                    emergency_phone: c.emergencyPhone || "",
+                    bank_name: c.bankName || "",
+                    bank_account: c.bankAccount || "",
+                    bank_account_holder: c.bankAccountHolder || "",
+                    checklist_dokumen: c.docChecklist || "",
+                    catatan_dokumen: c.docNotes || "",
+                    jumlah_dokumen_upload: Array.isArray(c.documents) ? c.documents.length : 0,
+                    has_photo: c.photoDataUrl ? "YES" : "NO",
+                    certificates_json: JSON.stringify(c.certificates || {})
+                })));
+            });
+
+            document.getElementById("btn-export-report").addEventListener("click", () => {
+                exportCsv("riwayat-laporan.csv", state.reports.map((r) => ({
+                    id: r.id,
+                    waktu: new Date(r.timestamp).toLocaleString("id-ID"),
+                    crew_id: r.crewId,
+                    nama_crew: r.crewName,
+                    jenis_laporan: r.type,
+                    kapal: r.ship,
+                    catatan: r.notes || ""
+                })));
+            });
+
+            document.getElementById("armada-form").addEventListener("submit", async (event) => {
+                event.preventDefault();
+                const indexValue = document.getElementById("armada-index").value;
+                const name = document.getElementById("armada-name").value.trim();
+                if (!name) return;
+
+                const duplicate = state.ships.some((ship, idx) => ship.toLowerCase() === name.toLowerCase() && String(idx) !== indexValue);
+                if (duplicate) {
+                    alert("Nama armada sudah ada.");
+                    return;
+                }
+
+                let renamedCrew = [];
+                let oldName = "";
+
+                if (indexValue === "") {
+                    state.ships.push(name);
+                } else {
+                    oldName = state.ships[Number(indexValue)];
+                    state.ships[Number(indexValue)] = name;
+                    state.crew.forEach((c) => {
+                        if (c.ship === oldName) {
+                            c.ship = name;
+                            renamedCrew.push(c);
+                        }
+                    });
+                    state.reports.forEach((r) => {
+                        if (r.ship === oldName) r.ship = name;
+                    });
+                    if (state.filterShip === oldName) state.filterShip = name;
+                }
+
+                document.getElementById("armada-form").reset();
+                document.getElementById("armada-index").value = "";
+                saveState();
+                rerenderAll();
+
+                if (IS_GAS) {
+                    const extraShips = state.ships.filter((ship) => !state.crew.some((c) => c.ship === ship));
+                    saveShipsLocal(extraShips);
+                    if (oldName && renamedCrew.length) {
+                        for (const crew of renamedCrew) {
+                            await gasApi.saveCrew(crew);
+                        }
+                    }
+                    await refreshFromServer();
+                }
+            });
+
+            document.getElementById("btn-cancel-armada-edit").addEventListener("click", () => {
+                document.getElementById("armada-form").reset();
+                document.getElementById("armada-index").value = "";
+            });
+
+            document.getElementById("vessel-form").addEventListener("submit", async (event) => {
+                event.preventDefault();
+                const id = document.getElementById("vessel-id").value;
+                const payload = { id: id || nextVesselId() };
+                VESSEL_FIELDS.forEach((field) => {
+                    const input = document.getElementById(`vessel-${field.key}`);
+                    payload[field.key] = input ? input.value.trim() : "";
+                });
+                if (vesselPhotoBuffer) {
+                    payload.photo_url = vesselPhotoBuffer;
+                    const input = document.getElementById("vessel-photo_url");
+                    if (input) input.value = vesselPhotoBuffer;
+                }
+                if (!payload.vessel_name) {
+                    alert("Vessel Name wajib diisi.");
+                    return;
+                }
+
+                if (IS_GAS) {
+                    await gasApi.saveVessel(payload);
+                    await refreshFromServer();
+                } else {
+                    const existingIndex = state.vessels.findIndex((v) => v.id === payload.id);
+                    if (existingIndex >= 0) {
+                        state.vessels[existingIndex] = payload;
+                    } else {
+                        state.vessels.push(payload);
+                    }
+                    saveVesselsLocal(state.vessels);
+                    syncShipsFromVessels();
+                    saveState();
+                    rerenderAll();
+                }
+
+                document.getElementById("vessel-form").reset();
+                document.getElementById("vessel-id").value = "";
+                vesselPhotoBuffer = "";
+                renderVesselPhotoPreview();
+            });
+
+            document.getElementById("btn-cancel-vessel").addEventListener("click", () => {
+                document.getElementById("vessel-form").reset();
+                document.getElementById("vessel-id").value = "";
+                vesselPhotoBuffer = "";
+                renderVesselPhotoPreview();
+            });
+
+            document.getElementById("btn-reset").addEventListener("click", async () => {
+                if (!confirm("Reset semua data ke data awal? Perubahan saat ini akan hilang.")) return;
+                if (IS_GAS) {
+                    const remote = await gasApi.getState();
+                    const list = Array.isArray(remote.crew) ? remote.crew : [];
+                    for (const crew of list) {
+                        if (crew.id) await gasApi.deleteCrew(crew.id);
+                    }
+                    const rows = IMPORTED_ROSTER.map((r) => ({
+                        nama: r.name,
+                        jabatan: r.role,
+                        kapal: r.ship,
+                        "sign on": r.signOn || "",
+                        "sign off": r.signOff || ""
+                    }));
+                    await gasApi.importCrewList(rows);
+                    state.reports = [];
+                    saveReportsLocal();
+                    await refreshFromServer();
+                    return;
+                }
+
+                const initial = createInitialState();
+                state.ships = initial.ships;
+                state.crew = initial.crew;
+                state.reports = initial.reports;
+                saveState();
+                rerenderAll();
+            });
+
+            document.addEventListener("keydown", (event) => {
+                if (event.key !== "Escape") return;
+                if (!document.getElementById("crew-modal").classList.contains("hidden")) closeCrewModal();
+                if (!document.getElementById("crew-detail-modal").classList.contains("hidden")) closeCrewDetailModal();
             });
         }
-
-        // Modal Logic
-        function openModal(shipId) {
-            const ship = fleetData.find(s => s.id === shipId);
-            if(!ship) return;
-
-            document.getElementById('modal-ship-name').textContent = ship.name;
-            document.getElementById('modal-master').textContent = ship.master;
-            document.getElementById('modal-sso').textContent = ship.sso;
-            document.getElementById('modal-location').textContent = ship.location;
-            document.getElementById('modal-meeting').textContent = ship.lastSafetyMeeting;
-            document.getElementById('modal-drill-theme').textContent = ship.drillTheme;
-
-            const issuesList = document.getElementById('modal-issues-list');
-            issuesList.innerHTML = '';
-            if(ship.criticalFaults.length > 0) {
-                ship.criticalFaults.forEach(fault => {
-                    issuesList.innerHTML += `<li>${fault}</li>`;
-                });
-            } else {
-                issuesList.innerHTML = `<li class="text-emerald-600 font-medium list-none">✅ Tidak ada kerusakan kritis dilaporkan.</li>`;
-            }
-
-            document.getElementById('shipModal').classList.remove('hidden');
-            // Prevent background scrolling
-            document.body.style.overflow = 'hidden';
+        function updateClock() {
+            document.getElementById("clock").textContent = new Date().toLocaleString("id-ID");
         }
 
-        function closeModal() {
-            document.getElementById('shipModal').classList.add('hidden');
-            // Restore background scrolling
-            document.body.style.overflow = 'auto';
+        async function init() {
+            const loaded = await loadState();
+            state.ships = loaded.ships;
+            state.crew = loaded.crew;
+            state.reports = loaded.reports;
+            state.vessels = loaded.vessels || [];
+            bindEvents();
+            rerenderAll();
+            toggleReportFields();
+            updateClock();
+            setInterval(updateClock, 1000);
         }
 
-        // Close modal on outside click
-        document.getElementById('shipModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeModal();
-            }
-        });
+        window.addEventListener("load", init);
     </script>
 </body>
 </html>
